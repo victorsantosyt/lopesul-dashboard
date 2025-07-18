@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Operador {
+  id        String   @id @default(uuid())
+  usuario   String   @unique
+  senha     String
+  criadoEm  DateTime @default(now()) @map("createdAt")
+}
+
+model Frota {
+  id           String         @id @default(uuid())
+  criadoEm     DateTime       @default(now()) @map("createdAt")
+  dispositivos Dispositivo[]
+  vendas       Venda[]        // <-- adicionado
+}
+
+model Venda {
+  id       String   @id @default(uuid())
+  frotaId  String
+  frota    Frota    @relation(fields: [frotaId], references: [id])
+  valor    Float
+  data     DateTime @default(now())
+}
+
+model Dispositivo {
+  id        String   @id @default(uuid())
+  ip        String
+  criadoEm  DateTime @default(now()) @map("createdAt")
+  frotaId   String
+  frota     Frota    @relation(fields: [frotaId], references: [id])
+}
+
+model Pagamento {
+  id          String   @id @default(cuid())
+  valor       Float
+  descricao   String
+  chavePix    String
+  payload     String   // Código Pix gerado
+  status      String   @default("pendente") // pendente, pago, expirado
+  ipCliente   String?
+  macCliente  String?
+  plano       String
+  criadoEm    DateTime @default(now())
+  pagoEm      DateTime?
+  expiraEm    DateTime?
+  
+  @@map("pagamentos")
+}
+
+model SessaoAtiva {
+  id          String   @id @default(cuid())
+  ipCliente   String   @unique
+  macCliente  String?
+  plano       String
+  inicioEm    DateTime @default(now())
+  expiraEm    DateTime
+  ativo       Boolean  @default(true)
+  pagamentoId String?
+  
+  @@map("sessoes_ativas")
+}
+
