@@ -1,8 +1,0 @@
-{
-  "/api/frotas/route": "app/api/frotas/route.js",
-  "/relatorios/page": "app/relatorios/page.js",
-  "/frotas/page": "app/frotas/page.js",
-  "/pagamentos/page": "app/pagamentos/page.js",
-  "/acessos/page": "app/acessos/page.js",
-  "/login/page": "app/login/page.js"
-}

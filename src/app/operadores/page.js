@@ -66,8 +66,8 @@ export default function OperadoresPage() {
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Operadores</h1>
+    <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#1a2233] min-h-screen transition-colors">
+      <h1 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Operadores</h1>
 
       <div className="mb-6 flex flex-col md:flex-row gap-4">
         <input
@@ -75,14 +75,14 @@ export default function OperadoresPage() {
           placeholder="Nome do operador"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          className="px-4 py-2 border rounded"
+          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-[#232e47] text-gray-800 dark:text-gray-100"
         />
         <input
           type="password"
           placeholder="Senha"
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
-          className="px-4 py-2 border rounded"
+          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-[#232e47] text-gray-800 dark:text-gray-100"
         />
         <button
           onClick={modoEdicao ? handleEditar : handleCriar}
@@ -92,40 +92,42 @@ export default function OperadoresPage() {
         </button>
       </div>
 
-      <table className="w-full border">
-        <thead>
-          <tr className="bg-gray-200 text-left">
-            <th className="p-2">Nome</th>
-            <th className="p-2">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {operadores.map((op) => (
-            <tr key={op.id} className="border-t">
-              <td className="p-2">{op.nome}</td>
-              <td className="p-2 flex gap-2">
-                <button
-                  onClick={() => iniciarEdicao(op)}
-                  className="bg-yellow-500 text-white px-3 py-1 rounded"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => handleDeletar(op.id)}
-                  className="bg-red-600 text-white px-3 py-1 rounded"
-                >
-                  Excluir
-                </button>
-              </td>
+      <div className="overflow-x-auto rounded-xl shadow bg-white dark:bg-[#232e47] transition-colors">
+        <table className="w-full text-sm text-left text-gray-700 dark:text-gray-200">
+          <thead>
+            <tr className="bg-gray-200 dark:bg-[#1a2233] text-left text-gray-700 dark:text-gray-300">
+              <th className="p-2">Nome</th>
+              <th className="p-2">Ações</th>
             </tr>
-          ))}
-          {operadores.length === 0 && (
-            <tr>
-              <td className="p-2 text-gray-500">Nenhum operador ainda.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {operadores.map((op) => (
+              <tr key={op.id} className="border-t border-gray-200 dark:border-gray-700">
+                <td className="p-2">{op.nome}</td>
+                <td className="p-2 flex gap-2">
+                  <button
+                    onClick={() => iniciarEdicao(op)}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleDeletar(op.id)}
+                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
+                  >
+                    Excluir
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {operadores.length === 0 && (
+              <tr>
+                <td className="p-2 text-gray-500 dark:text-gray-400">Nenhum operador ainda.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

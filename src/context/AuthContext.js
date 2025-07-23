@@ -44,7 +44,8 @@ export function AuthProvider({ children }) {
 
   function login(dadosUsuario) {
     setUsuario(dadosUsuario);
-    const tempoMinutos = localStorage.getItem('tempoSessao') || 15;
+    let tempoMinutos = localStorage.getItem('tempoSessao');
+    if (!tempoMinutos || isNaN(tempoMinutos)) tempoMinutos = 15; // Define o tempo padrão como 15 minutos
     const tempoSessao = parseInt(tempoMinutos) * 60 * 1000;
     const agora = new Date().getTime();
     const expira = agora + tempoSessao;

@@ -7,11 +7,20 @@ export default function LayoutWrapper({ children }) {
   const hideSidebar = pathname === '/' || pathname === '/login';
 
   return (
-    <div className="flex">
+    <div className="flex min-h-screen bg-[#F0F6FA] dark:bg-[#1a2233] transition-colors">
       {!hideSidebar && <Sidebar />}
-      <div className={`flex-1 ${!hideSidebar ? 'ml-64' : ''}`}>
+      <main
+        className={`
+          flex-1
+          transition-all
+          ${!hideSidebar ? 'ml-64' : ''}
+          p-8
+          bg-[#F0F6FA]
+          dark:bg-[#1a2233]
+        `}
+      >
         {children}
-      </div>
+      </main>
     </div>
   );
 }

@@ -20,7 +20,7 @@ export default function Dashboard() {
 
   return (
     <ProtectedRoute>
-      <div className="p-6 md:p-8 bg-gray-50 min-h-screen">
+      <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#1a2233] min-h-screen transition-colors">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
             { title: "Vendas do Dia", value: vendas.doDia },
@@ -30,7 +30,7 @@ export default function Dashboard() {
           ].map(({ title, value }) => (
             <div
               key={title}
-              className="bg-blue-500 text-white rounded-xl p-4 text-center shadow"
+              className="bg-blue-500 dark:bg-blue-600 text-white rounded-xl p-4 text-center shadow transition-colors"
             >
               <div className="text-sm">{title}</div>
               <div className="text-2xl font-bold">{value ?? "--"}</div>
@@ -39,24 +39,24 @@ export default function Dashboard() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-xl p-4 shadow col-span-2">
-            <h2 className="text-lg font-semibold mb-4">Acessos Ativos</h2>
-            <table className="w-full text-sm text-gray-700">
-              <thead className="text-left border-b">
+          <div className="bg-white dark:bg-[#232e47] rounded-xl p-4 shadow col-span-2 transition-colors">
+            <h2 className="text-lg font-semibold mb-4 text-gray-800 dark:text-white">Acessos Ativos</h2>
+            <table className="w-full text-sm text-gray-700 dark:text-gray-300">
+              <thead className="text-left border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  <th>Nome</th>
-                  <th>Tempo Restante</th>
-                  <th className="text-center">Ações</th>
+                  <th className="text-gray-800 dark:text-white">Nome</th>
+                  <th className="text-gray-800 dark:text-white">Tempo Restante</th>
+                  <th className="text-center text-gray-800 dark:text-white">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {acessos.length > 0 ? (
                   acessos.map(({ nome, tempoRestante }) => (
-                    <tr key={nome} className="border-b">
+                    <tr key={nome} className="border-b border-gray-200 dark:border-gray-600">
                       <td className="py-2">{nome}</td>
                       <td>{tempoRestante}</td>
                       <td className="text-center">
-                        <button className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md">
+                        <button className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md transition">
                           Bloquear
                         </button>
                       </td>
@@ -64,7 +64,7 @@ export default function Dashboard() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="3" className="text-center py-4 text-gray-400">
+                    <td colSpan="3" className="text-center py-4 text-gray-400 dark:text-gray-500">
                       Sem acessos no momento.
                     </td>
                   </tr>
@@ -74,8 +74,8 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-4">
-            <div className="bg-white p-4 rounded-xl shadow">
-              <h3 className="font-semibold mb-2">Starlink</h3>
+            <div className="bg-white dark:bg-[#232e47] p-4 rounded-xl shadow transition-colors">
+              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">Starlink</h3>
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-3 h-3 rounded-full ${
@@ -84,11 +84,11 @@ export default function Dashboard() {
                       : "bg-gray-400"
                   }`}
                 ></div>
-                <span>{status.starlink ?? "Aguardando..."}</span>
+                <span className="text-gray-700 dark:text-gray-300">{status.starlink ?? "Aguardando..."}</span>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow">
-              <h3 className="font-semibold mb-2">MikroTik</h3>
+            <div className="bg-white dark:bg-[#232e47] p-4 rounded-xl shadow transition-colors">
+              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">MikroTik</h3>
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-3 h-3 rounded-full ${
@@ -97,22 +97,22 @@ export default function Dashboard() {
                       : "bg-gray-400"
                   }`}
                 ></div>
-                <span>{status.mikrotik ?? "Aguardando..."}</span>
+                <span className="text-gray-700 dark:text-gray-300">{status.mikrotik ?? "Aguardando..."}</span>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow">
-              <h3 className="font-semibold mb-2">Últimos Pagamentos</h3>
+            <div className="bg-white dark:bg-[#232e47] p-4 rounded-xl shadow transition-colors">
+              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">Últimos Pagamentos</h3>
               <ul className="text-sm">
                 {ultimosPagamentos.length > 0 ? (
                   ultimosPagamentos.map(({ data, cliente, valor, tipo }, i) => (
-                    <li key={i} className="flex justify-between">
+                    <li key={i} className="flex justify-between text-gray-700 dark:text-gray-300">
                       <span>{data}</span>
                       <span className="font-medium">{cliente}</span>
                       <span
                         className={`text-right ${
                           tipo === "Aprovado"
-                            ? "text-green-600"
-                            : "text-blue-500"
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-blue-500 dark:text-blue-400"
                         }`}
                       >
                         {valor}
@@ -120,7 +120,7 @@ export default function Dashboard() {
                     </li>
                   ))
                 ) : (
-                  <li className="text-center text-gray-400">
+                  <li className="text-center text-gray-400 dark:text-gray-500">
                     Nenhum pagamento ainda.
                   </li>
                 )}
