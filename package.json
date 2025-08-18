@@ -11,7 +11,8 @@
     "dev": "next dev",
     "build": "next build",
     "postinstall": "prisma generate",
-    "start": "next start"
+    "migrate:deploy": "prisma migrate deploy",
+    "start": "next start -p $PORT"
   },
   "dependencies": {
     "@prisma/client": "6.9.0",
