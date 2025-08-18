@@ -1,31 +1,29 @@
-import { PrismaClient } from '@prisma/client';
-import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
-// GET – Listar dispositivos
 export async function GET() {
-  try {
-    const dispositivos = await prisma.dispositivo.findMany();
-    return NextResponse.json(dispositivos);
-  } catch (err) {
-    return NextResponse.json({ error: 'Erro ao listar dispositivos.' }, { status: 500 });
-  }
+  const operadores = await prisma.operador.findMany({
+    orderBy: { criadoEm: 'desc' },
+  });
+  return new Response(JSON.stringify(operadores), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
-// POST – Cadastrar novo dispositivo
-export async function POST(req) {
-  try {
-    const body = await req.json();
-    const novo = await prisma.dispositivo.create({
-      data: {
-        tipo: body.tipo,
-        ip: body.ip,
-        onibusId: body.onibusId,
-      },
-    });
-    return NextResponse.json(novo);
-  } catch (err) {
-    return NextResponse.json({ error: 'Erro ao cadastrar dispositivo.' }, { status: 500 });
+export async function POST(request) {
+  const data = await request.json();
+  if (!data.nome || !data.senha) {
+    return new Response('Nome e senha são obrigatórios.', { status: 400 });
   }
+  const senhaHash = await bcrypt.hash(data.senha, 10);
+  const operador = await prisma.operador.create({
+    data: { nome: data.nome, senha: senhaHash, ativo: true },
+  });
+  return new Response(JSON.stringify(operador), {
+    status: 201,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
