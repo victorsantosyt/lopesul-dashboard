@@ -1,16 +1,22 @@
 {
   "type": "module",
-  "name": "lopesul-dashboard-login-fix",
+  "name": "lopesul-dashboard",
   "version": "1.0.0",
+  "engines": { "node": ">=18" },
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "node prisma/seed.js"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postinstall": "prisma generate",
     "start": "next start"
   },
   "dependencies": {
-    "@prisma/client": "^6.9.0",
+    "@prisma/client": "6.9.0",
     "autoprefixer": "^10.4.0",
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^2.4.3",
     "lucide-react": "^0.513.0",
     "mikronode-ng": "^1.0.11",
     "next": "^15.3.4",
@@ -24,9 +30,6 @@
     "tailwindcss": "^3.3.0"
   },
   "devDependencies": {
-    "prisma": "^6.9.0"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "prisma": "6.9.0"
   }
 }

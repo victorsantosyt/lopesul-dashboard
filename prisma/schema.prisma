@@ -7,63 +7,85 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- Tabelas administrativas / domínio ---
+
 model Operador {
-  id        String   @id @default(uuid())
-  usuario   String   @unique
-  senha     String
-  criadoEm  DateTime @default(now()) @map("createdAt")
+  id       String   @id @default(uuid())
+  usuario  String   @unique
+  senha    String
+  criadoEm DateTime @default(now()) @map("createdAt")
 }
 
 model Frota {
-  id           String         @id @default(uuid())
-  criadoEm     DateTime       @default(now()) @map("createdAt")
+  id           String        @id @default(uuid())
+  criadoEm     DateTime      @default(now()) @map("createdAt")
   dispositivos Dispositivo[]
-  vendas       Venda[]        // <-- adicionado
+  vendas       Venda[]
 }
 
 model Venda {
-  id       String   @id @default(uuid())
-  frotaId  String
-  frota    Frota    @relation(fields: [frotaId], references: [id])
-  valor    Float
-  data     DateTime @default(now())
+  id      String   @id @default(uuid())
+  frotaId String
+  frota   Frota    @relation(fields: [frotaId], references: [id])
+  valor   Float
+  data    DateTime @default(now())
 }
 
 model Dispositivo {
-  id        String   @id @default(uuid())
-  ip        String
-  criadoEm  DateTime @default(now()) @map("createdAt")
-  frotaId   String
-  frota     Frota    @relation(fields: [frotaId], references: [id])
+  id       String   @id @default(uuid())
+  ip       String
+  criadoEm DateTime @default(now()) @map("createdAt")
+  frotaId  String
+  frota    Frota    @relation(fields: [frotaId], references: [id])
 }
 
+// --- Pagamentos / Sessões ---
+
 model Pagamento {
-  id          String   @id @default(cuid())
-  valor       Float
-  descricao   String
-  chavePix    String
-  payload     String   // Código Pix gerado
-  status      String   @default("pendente") // pendente, pago, expirado
-  ipCliente   String?
-  macCliente  String?
-  plano       String
-  criadoEm    DateTime @default(now())
-  pagoEm      DateTime?
-  expiraEm    DateTime?
-  
+  id        String  @id @default(cuid())
+  valor     Float
+  descricao String
+  chavePix  String? // opcional
+  payload   String? // opcional (QR/payload do Pix)
+  status    String  @default("pendente") // 'pendente' | 'pago' | 'expirado'
+  plano     String
+
+  // para casar com as rotas de API:
+  ip       String?
+  mac      String?
+  roteador String?
+
+  // (legado, se quiser manter compatibilidade com código antigo)
+  // ipCliente   String?
+  // macCliente  String?
+
+  criadoEm DateTime  @default(now())
+  pagoEm   DateTime?
+  expiraEm DateTime?
+
+  // relação com SessaoAtiva (invertida)
+  sessoes SessaoAtiva[]
+
+  // Se seu PSP te fornecer um identificador único (txid/e2eid), vale manter único:
+  // txid     String? @unique
+
+  @@index([descricao, valor, status])
+  @@index([mac])
+  @@index([criadoEm])
   @@map("pagamentos")
 }
 
 model SessaoAtiva {
-  id          String   @id @default(cuid())
-  ipCliente   String   @unique
-  macCliente  String?
-  plano       String
-  inicioEm    DateTime @default(now())
-  expiraEm    DateTime
-  ativo       Boolean  @default(true)
+  id         String   @id @default(cuid())
+  ipCliente  String   @unique
+  macCliente String?
+  plano      String
+  inicioEm   DateTime @default(now())
+  expiraEm   DateTime
+  ativo      Boolean  @default(true)
+
   pagamentoId String?
-  
+  pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id], onDelete: SetNull)
+
   @@map("sessoes_ativas")
 }
-

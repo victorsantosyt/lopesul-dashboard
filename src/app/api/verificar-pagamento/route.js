@@ -1,68 +1,67 @@
-import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
 
-const prisma = new PrismaClient();
+function extrairPlano(descricao = '') {
+  const d = (descricao || '').toLowerCase();
+  if (d.includes('12h')) return '12h';
+  if (d.includes('24h')) return '24h';
+  if (d.includes('48h')) return '48h';
+  return '12h';
+}
 
 export async function POST(req) {
   try {
     const { valor, descricao, payload } = await req.json();
 
-    if (!valor || !descricao) {
-      return NextResponse.json({ error: 'Valor e descrição são obrigatórios' }, { status: 400 });
+    if (valor == null || !descricao) {
+      return NextResponse.json(
+        { error: 'Valor e descrição são obrigatórios' },
+        { status: 400 }
+      );
     }
 
-    // Busca o pagamento no banco
-    const pagamento = await prisma.pagamento.findFirst({
-      where: {
-        valor: parseFloat(valor),
-        descricao: descricao,
-        status: 'pago'
-      }
+    const valorNum = Number(valor);
+    if (Number.isNaN(valorNum)) {
+      return NextResponse.json({ error: 'Valor inválido' }, { status: 400 });
+    }
+
+    // 1) Busca como "pago"
+    const pago = await prisma.pagamento.findFirst({
+      where: { valor: valorNum, descricao, status: 'pago' },
+      orderBy: { criadoEm: 'desc' },
     });
 
-    if (pagamento) {
-      return NextResponse.json({ 
-        pago: true, 
-        pagamentoId: pagamento.id,
-        plano: pagamento.plano 
+    if (pago) {
+      return NextResponse.json({
+        pago: true,
+        pagamentoId: pago.id,
+        plano: pago.plano,
       });
     }
 
-    // Se não encontrou como pago, verifica se existe como pendente
-    const pagamentoPendente = await prisma.pagamento.findFirst({
-      where: {
-        valor: parseFloat(valor),
-        descricao: descricao,
-        status: 'pendente'
-      }
+    // 2) Busca como "pendente"
+    const pendente = await prisma.pagamento.findFirst({
+      where: { valor: valorNum, descricao, status: 'pendente' },
+      orderBy: { criadoEm: 'desc' },
     });
 
-    if (!pagamentoPendente && payload) {
-      // Cria o registro de pagamento pendente se não existir
+    // 3) Se não existir pendente e tiver payload → cria um
+    if (!pendente && payload) {
       await prisma.pagamento.create({
         data: {
-          valor: parseFloat(valor),
-          descricao: descricao,
-          chavePix: "fsolucoes1@hotmail.com",
-          payload: payload,
+          valor: valorNum,
+          descricao,
+          chavePix: 'fsolucoes1@hotmail.com',
+          payload,
           plano: extrairPlano(descricao),
-          status: 'pendente'
-        }
+          status: 'pendente',
+        },
       });
     }
 
     return NextResponse.json({ pago: false });
-
   } catch (error) {
     console.error('Erro ao verificar pagamento:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
-}
-
-// Função auxiliar para extrair o plano da descrição
-function extrairPlano(descricao) {
-  if (descricao.includes('12h')) return '12h';
-  if (descricao.includes('24h')) return '24h';
-  if (descricao.includes('48h')) return '48h';
-  return '12h'; // padrão
 }
