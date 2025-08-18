@@ -3,40 +3,29 @@ import { NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
-// Cadastrar novo Mikrotik (POST)
-export async function POST(req) {
+// GET – Listar dispositivos
+export async function GET() {
   try {
-    const body = await req.json();
-    const { ip, frotaId } = body;
-
-    if (!ip || !frotaId) {
-      return NextResponse.json({ error: 'IP e frota são obrigatórios' }, { status: 400 });
-    }
-
-    const dispositivo = await prisma.dispositivo.create({
-      data: {
-        ip,
-        frotaId,
-      },
-    });
-
-    return NextResponse.json(dispositivo);
-  } catch (error) {
-    console.error('Erro ao cadastrar dispositivo:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    const dispositivos = await prisma.dispositivo.findMany();
+    return NextResponse.json(dispositivos);
+  } catch (err) {
+    return NextResponse.json({ error: 'Erro ao listar dispositivos.' }, { status: 500 });
   }
 }
 
-// Buscar todos os dispositivos (GET)
-export async function GET() {
+// POST – Cadastrar novo dispositivo
+export async function POST(req) {
   try {
-    const dispositivos = await prisma.dispositivo.findMany({
-      include: { frota: true },
+    const body = await req.json();
+    const novo = await prisma.dispositivo.create({
+      data: {
+        tipo: body.tipo,
+        ip: body.ip,
+        onibusId: body.onibusId,
+      },
     });
-
-    return NextResponse.json(dispositivos);
-  } catch (error) {
-    console.error('Erro ao buscar dispositivos:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    return NextResponse.json(novo);
+  } catch (err) {
+    return NextResponse.json({ error: 'Erro ao cadastrar dispositivo.' }, { status: 500 });
   }
 }
