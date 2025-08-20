@@ -10,9 +10,11 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-br">
+    <html lang="pt-br" className="dark" suppressHydrationWarning>
       <body>
         <AuthProvider>
+          {/* Se seu ThemeProvider alterna classes na <html>, ele continuará funcionando,
+              mas o padrão inicial agora é 'dark'. */}
           <ThemeProvider>
             <LayoutWrapper>{children}</LayoutWrapper>
           </ThemeProvider>
