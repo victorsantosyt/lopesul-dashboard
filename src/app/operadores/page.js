@@ -6,9 +6,9 @@ const API = "/api/operadores";
 
 export default function OperadoresPage() {
   const [operadores, setOperadores] = useState([]);
-  const [nome, setNome] = useState("");
+  const [nome, setNome] = useState("");          // nome exibido na UI
   const [senha, setSenha] = useState("");
-  const [ativo, setAtivo] = useState(true);
+  const [ativo, setAtivo] = useState(true);      // pode não existir no DB; default true
 
   const [modoEdicao, setModoEdicao] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
@@ -16,12 +16,15 @@ export default function OperadoresPage() {
   const [loading, setLoading] = useState(false);
   const [loadingLista, setLoadingLista] = useState(false);
 
-  // bloqueia submit se campos inválidos
+  // garante string sempre (evita .trim() em undefined)
+  const safeNome  = (typeof nome  === "string" ? nome  : "").toString();
+  const safeSenha = (typeof senha === "string" ? senha : "").toString();
+
   const podeSalvar = useMemo(() => {
     if (loading) return false;
-    if (modoEdicao) return nome.trim().length > 0;           // senha é opcional no edit
-    return nome.trim().length > 0 && senha.trim().length > 0; // no create, ambos
-  }, [loading, modoEdicao, nome, senha]);
+    if (modoEdicao) return safeNome.trim().length > 0;                 // senha opcional no edit
+    return safeNome.trim().length > 0 && safeSenha.trim().length > 0;  // no create, ambos
+  }, [loading, modoEdicao, safeNome, safeSenha]);
 
   async function fetchOperadores() {
     try {
@@ -43,16 +46,19 @@ export default function OperadoresPage() {
   }, []);
 
   async function handleCriar() {
-    const n = nome.trim();
-    const s = senha.trim();
-    if (!n || !s) return;
+    const usuario = safeNome.trim();
+    const s = safeSenha.trim();
+    if (!usuario || !s) return;
 
     setLoading(true);
     try {
+      const payload = { usuario, senha: s };
+      // se seu backend aceitar "ativo", pode incluir: payload.ativo = ativo;
+
       const res = await fetch(API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome: n, senha: s, ativo }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -69,13 +75,15 @@ export default function OperadoresPage() {
   }
 
   async function handleEditar() {
-    const n = nome.trim();
-    if (!n || !editandoId) return;
+    const usuario = safeNome.trim();
+    if (!usuario || !editandoId) return;
 
     setLoading(true);
     try {
-      const payload = { nome: n, ativo };
-      if (senha.trim()) payload.senha = senha.trim(); // só envia se alterar
+      const payload = { usuario };
+      if (safeSenha.trim()) payload.senha = safeSenha.trim();
+      // idem acima: se o backend tiver campo "ativo" no modelo, inclua:
+      // payload.ativo = ativo;
 
       const res = await fetch(`${API}/${editandoId}`, {
         method: "PUT",
@@ -112,7 +120,8 @@ export default function OperadoresPage() {
   }
 
   function iniciarEdicao(op) {
-    setNome(op.nome);
+    // compat: aceita tanto op.usuario quanto op.nome (se vier de uma versão antiga)
+    setNome(op.usuario ?? op.nome ?? "");
     setSenha("");
     setAtivo(op.ativo ?? true);
     setEditandoId(op.id);
@@ -166,6 +175,7 @@ export default function OperadoresPage() {
           />
         </div>
 
+        {/* Só mantenha esse toggle se o backend realmente tiver o campo "ativo" */}
         <label className="flex items-center gap-2 select-none text-sm text-gray-700 dark:text-gray-200">
           <input
             type="checkbox"
@@ -179,7 +189,7 @@ export default function OperadoresPage() {
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={!podeSalvar}
+            disabled={!podeSalvar || loading}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded"
           >
             {loading ? "Aguarde..." : modoEdicao ? "Salvar" : "Cadastrar"}
@@ -223,9 +233,9 @@ export default function OperadoresPage() {
             ) : (
               operadores.map((op) => (
                 <tr key={op.id} className="border-t border-gray-200 dark:border-gray-700">
-                  <td className="p-3">{op.nome}</td>
+                  <td className="p-3">{op.usuario ?? op.nome}</td>
                   <td className="p-3">
-                    {op.ativo ? (
+                    {(op.ativo ?? true) ? (
                       <span className="inline-flex items-center gap-1 text-green-600">
                         ● <span className="text-xs">Ativo</span>
                       </span>
