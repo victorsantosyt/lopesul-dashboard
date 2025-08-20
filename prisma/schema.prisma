@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -88,4 +89,25 @@ model SessaoAtiva {
   pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id], onDelete: SetNull)
 
   @@map("sessoes_ativas")
+}
+enum Status {
+  PENDENTE
+  PAGO
+  EXPIRADO
+  CANCELADO
+}
+
+model Transacao {
+  id        String   @id @default(cuid())
+  txid      String   @unique
+  valor     Decimal  @db.Decimal(10, 2)
+  descricao String
+  status    Status   @default(PENDENTE)
+  mac       String?
+  ip        String?
+  minutos   Int?     @default(120)
+  linkOrig  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  paidAt    DateTime?
 }

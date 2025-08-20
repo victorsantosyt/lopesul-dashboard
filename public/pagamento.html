@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+  <title>Pagamento Pix - Lopesul Wi-Fi</title>
+  <link rel="icon" href="data:,">
+
+  <!-- seu CSS geral (se tiver) -->
+  <link rel="stylesheet" href="/captive/style.css?v=5">
+
+  <!-- QRious local; se não existir, usa CDN -->
+  <script src="/captive/vendor/qrious.min.js"
+          onerror="(function(){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';document.head.appendChild(s);})();">
+  </script>
+
+  <style>
+    /* estilos focados para ficarem próximos do seu layout do print */
+    :root {
+      --azul-fundo:#1d3a5a; --azul-botao:#2b79c2; --azul-botao-hover:#2066a6;
+      --verde:#63b245; --verde-hover:#529737;
+      --card:#ffffff; --sombra:0 20px 40px rgba(0,0,0,.08);
+    }
+    body {
+      margin:0; background:var(--azul-fundo); color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+    }
+    .wrap { min-height:100dvh; display:flex; align-items:flex-start; justify-content:center; padding:36px 16px; }
+    .card { width:100%; max-width:840px; background:transparent; text-align:center; }
+    .logo { width:280px; max-width:70%; height:auto; margin:8px auto 8px; display:block; }
+    h1 { margin:10px 0 6px; font-size:40px; font-weight:800; letter-spacing:.2px; }
+    .bus { width:360px; max-width:80%; height:auto; margin:10px auto 18px; display:block; }
+    .cta { display:inline-block; background:var(--verde); color:#fff; border-radius:26px; padding:12px 18px; font-weight:800; margin:6px 0 18px; }
+    .cta:hover { background:var(--verde-hover); }
+    .grid-planos { display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
+    .btn-plano {
+      background:var(--azul-botao); color:#fff; border:none; border-radius:14px;
+      padding:14px 22px; width:160px; font-weight:800; cursor:pointer; box-shadow:var(--sombra);
+    }
+    .btn-plano:hover { background:var(--azul-botao-hover); }
+    .btn-plano .preco { display:block; font-size:20px; }
+    .btn-plano .duracao { display:block; font-size:18px; opacity:.95; }
+
+    /* checkout (segunda etapa) */
+    .checkout { max-width:420px; margin:0 auto; background:var(--card); color:#222; border-radius:20px; box-shadow:var(--sombra); padding:20px; display:none; }
+    .title-ch { color:#0a73c0; font-weight:800; font-size:22px; margin:6px 0 2px; }
+    .sub-ch { color:#334; margin-bottom:8px; }
+    .qr { display:flex; justify-content:center; margin:12px 0 }
+    .code { background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; font-size:12px; color:#666; max-height:90px; overflow:auto; word-break:break-all }
+    .btn { width:100%; background:#0a73c0; color:#fff; border:0; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:10px }
+    .btn:hover { background:#085fa0 }
+    .pill { margin-top:10px; border-radius:8px; padding:10px; font-weight:700; border:1px solid }
+    .pill.warn { background:#fff3cd; border-color:#ffeaa7; color:#856404 }
+    .pill.info { background:#d1ecf1; border-color:#bee5eb; color:#0c5460 }
+    .pill.ok { background:#d4edda; border-color:#c3e6cb; color:#155724 }
+    .pill.err { background:#f8d7da; border-color:#f5c6cb; color:#721c24 }
+    .back { display:inline-block; margin-top:8px; font-size:.95rem; color:#0a73c0; cursor:pointer }
+
+    .rodape { margin-top:26px; opacity:.9 }
+    .rodape img { height:42px; width:auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="view-escolha">
+      <img class="logo" src="/assets/logo-header.png" alt="Lopesul Next">
+      <h1>Acesso Wi-Fi</h1>
+      <img class="bus" src="/assets/logo-onibus.png" alt="Ônibus Lopesul">
+
+      <a class="cta">Escolha seu pacote de internet</a>
+
+      <div class="grid-planos">
+        <button class="btn-plano" data-id="12h" data-valor="9.90"  data-desc="Acesso 12h">
+          <span class="preco">R$9,90</span><span class="duracao">12h</span>
+        </button>
+        <button class="btn-plano" data-id="24h" data-valor="14.90" data-desc="Acesso 24h">
+          <span class="preco">R$14,90</span><span class="duracao">24h</span>
+        </button>
+        <button class="btn-plano" data-id="48h" data-valor="19.90" data-desc="Acesso 48h">
+          <span class="preco">R$19,90</span><span class="duracao">48h</span>
+        </button>
+      </div>
+
+      <div class="rodape">
+  <img src="/assets/logo-footer.png" alt="Connect - desenvolvedor">
+</div>
+    </div>
+
+    <!-- ETAPA 2: CHECKOUT PIX -->
+    <div id="view-checkout" class="checkout">
+      <div class="title-ch">Pagamento via Pix</div>
+      <div class="sub-ch" id="desc-plano"></div>
+
+      <div class="qr">
+        <canvas id="qrcode" width="220" height="220"></canvas>
+      </div>
+
+      <div class="code" id="pix-code"></div>
+      <button class="btn" onclick="copiarPix()">📋 Copiar código Pix</button>
+
+      <div class="pill warn" id="timer">⏰ Tempo livre: 2:00</div>
+      <div class="pill info" id="status">🔄 Aguardando pagamento...</div>
+
+      <span class="back" id="btn-voltar">← escolher outro plano</span>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const API = ""; // mesmo domínio do backend
+
+      // parâmetros do Mikrotik / URL
+      const get = (n) => new URLSearchParams(location.search).get(n);
+      const mac = get("mac") || null;
+      const ip = get("ip") || null;
+      const roteador = get("roteador") || null;
+      const linkOrig = get("link_orig") || get("link-orig") || "";
+
+      // estados
+      let TXID = null;
+      let tempoLivre = 120;
+      let pollingHandle = null;
+      let timerHandle = null;
+
+      const elEscolha  = document.getElementById('view-escolha');
+      const elCheckout = document.getElementById('view-checkout');
+
+      // clique nos planos
+      document.querySelectorAll('.btn-plano').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const valor = btn.dataset.valor;
+          const descricao = btn.dataset.desc;
+          iniciarCheckout({ valor, descricao, minutos: 120 });
+        });
+      });
+
+      document.getElementById('btn-voltar').addEventListener('click', voltarEscolha);
+
+      // se vier com valor/descricao na URL, pula a tela
+      const valorUrl = get("valor");
+      const descUrl  = (get("descricao") || "").replace(/\+/g, " ");
+      if (valorUrl && descUrl) {
+        iniciarCheckout({ valor: valorUrl, descricao: descUrl, minutos: 120 });
+      }
+
+      // -------- fluxo checkout ----------
+      async function iniciarCheckout({ valor, descricao, minutos }) {
+        // troca de telas
+        elEscolha.style.display = 'none';
+        elCheckout.style.display = 'block';
+
+        tempoLivre = Number(minutos) || 120;
+        document.getElementById('desc-plano').innerText =
+          `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+        try {
+          const res = await fetch(`${API}/api/pagamento`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ valor, descricao, ip, mac, roteador })
+          });
+          if (!res.ok) throw new Error("Falha ao iniciar pagamento");
+          const data = await res.json(); // { txid, pixCopiaCola, ... }
+          if (!data?.txid || !data?.pixCopiaCola) throw new Error("Resposta inválida");
+          TXID = data.txid;
+
+          // QR
+          document.getElementById("pix-code").innerText = data.pixCopiaCola;
+          new QRious({
+            element: document.getElementById('qrcode'),
+            value: data.pixCopiaCola,
+            size: 220,
+            background: 'white',
+            foreground: 'black'
+          });
+
+          iniciarTimer();
+          iniciarPolling();
+        } catch (e) {
+          const s = document.getElementById('status');
+          s.className = 'pill err';
+          s.innerText = '❌ Não foi possível iniciar o pagamento.';
+        }
+      }
+
+      function voltarEscolha() {
+        limparFluxo();
+        elCheckout.style.display = 'none';
+        elEscolha.style.display  = 'block';
+        document.getElementById('pix-code').innerText = '';
+        const ctx = document.getElementById('qrcode').getContext('2d');
+        ctx && ctx.clearRect(0,0,220,220);
+        document.getElementById('status').className = 'pill info';
+        document.getElementById('status').innerText = '🔄 Aguardando pagamento...';
+        document.getElementById('timer').className = 'pill warn';
+        document.getElementById('timer').innerText = '⏰ Tempo livre: 2:00';
+      }
+
+      function limparFluxo() {
+        if (pollingHandle) clearInterval(pollingHandle);
+        if (timerHandle) clearInterval(timerHandle);
+        pollingHandle = null; timerHandle = null; TXID = null;
+      }
+
+      function iniciarPolling() {
+        pollingHandle = setInterval(async () => {
+          try {
+            const res = await fetch(`${API}/api/verificar-pagamento?txid=${encodeURIComponent(TXID)}`);
+            if (!res.ok) return;
+            const { status } = await res.json();
+
+            if (status === 'pago') {
+              limparFluxo();
+              const s = document.getElementById('status');
+              s.className = 'pill ok';
+              s.innerHTML = '✅ Pagamento confirmado! Liberando acesso...';
+
+              try {
+                await fetch(`${API}/api/liberar-acesso`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ txid: TXID, mac, ip, linkOrig })
+                });
+              } catch {}
+
+              setTimeout(() => {
+                try {
+                  const url = linkOrig ? decodeURIComponent(linkOrig) : 'http://clients3.google.com/generate_204';
+                  location.href = url;
+                } catch { location.href = '/'; }
+              }, 1200);
+            }
+
+            if (status === 'expirado') {
+              limparFluxo();
+              const s = document.getElementById('status');
+              s.className = 'pill err';
+              s.innerText = '⏳ Pagamento expirado. Gere um novo QR.';
+            }
+          } catch {}
+        }, 5000);
+      }
+
+      function iniciarTimer() {
+        const el = document.getElementById('timer');
+        const fmt = (t) => `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+        el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+        timerHandle = setInterval(() => {
+          tempoLivre = Math.max(tempoLivre-1, 0);
+          el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+          if (tempoLivre === 0) {
+            clearInterval(timerHandle);
+            el.className = 'pill err';
+            el.innerText = '⏰ Tempo esgotado! Faça o pagamento para continuar.';
+          }
+        }, 1000);
+      }
+
+      window.copiarPix = function() {
+        const code = document.getElementById('pix-code').innerText;
+        if (!code) return;
+        navigator.clipboard.writeText(code).then(() => {
+          const s = document.getElementById('status');
+          const orig = s.innerHTML;
+          s.innerHTML = '📋 Código Pix copiado!';
+          setTimeout(() => s.innerHTML = orig, 1800);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

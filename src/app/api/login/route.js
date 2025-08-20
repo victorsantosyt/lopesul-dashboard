@@ -1,28 +1,29 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-
 import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 
 export async function POST(req) {
   try {
     const { usuario, senha } = await req.json();
-
-    const operador = await prisma.operador.findUnique({
-      where: { usuario },
-    });
-
-    if (!operador || !(await bcrypt.compare(senha, operador.senha))) {
-      return NextResponse.json({ error: 'Usuário ou senha inválidos' }, { status: 401 });
+    if (!usuario || !senha) {
+      return NextResponse.json({ error: 'Usuário e senha são obrigatórios.' }, { status: 400 });
     }
 
-    return NextResponse.json({
-      id: operador.id,
-      usuario: operador.usuario,
-      status: 200,
+    const op = await prisma.operador.findUnique({ where: { usuario } });
+    if (!op) return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
+
+    const ok = await bcrypt.compare(senha, op.senha);
+    if (!ok) return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
+
+    const res = NextResponse.json({ id: op.id, usuario: op.usuario });
+    res.cookies.set('token', op.id, {
+      httpOnly: true, sameSite: 'lax', path: '/',
+      maxAge: 60 * 60 * 12,
+      secure: process.env.NODE_ENV === 'production',
     });
-  } catch (error) {
-    console.error('Erro no login:', error);
-    return NextResponse.json({ error: 'Erro interno no login' }, { status: 500 });
+    return res;
+  } catch (e) {
+    console.error('POST /api/login', e);
+    return NextResponse.json({ error: 'Erro ao fazer login' }, { status: 500 });
   }
 }

@@ -1,32 +1,27 @@
 // src/app/api/operadores/[id]/route.js
-import { PrismaClient } from '@prisma/client';
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
-import prisma from '@/lib/prisma';
+export async function PUT(req, { params }) {
+  const id = String(params.id);
+  const { nome, usuario, senha } = await req.json();
 
-export async function PUT(request, { params }) {
-  const id = parseInt(params.id);
-  const data = await request.json();
+  const data = {};
+  if ((usuario || nome)?.trim()) data.usuario = (usuario || nome).trim();
+  if (senha?.trim()) data.senha = await bcrypt.hash(senha.trim(), 10);
 
-  const updateData = {};
-  if (data.nome) updateData.nome = data.nome;
-  if (data.senha) updateData.senha = await bcrypt.hash(data.senha, 10);
-  if (typeof data.ativo === 'boolean') updateData.ativo = data.ativo;
-
-  const operador = await prisma.operador.update({
+  const op = await prisma.operador.update({
     where: { id },
-    data: updateData,
+    data,
+    select: { id: true, usuario: true, criadoEm: true },
   });
 
-  return Response.json(operador);
+  return NextResponse.json(op);
 }
 
-export async function DELETE(_, { params }) {
-  const id = parseInt(params.id);
-
-  await prisma.operador.delete({
-    where: { id },
-  });
-
-  return Response.json({ status: 'Operador deletado' });
+export async function DELETE(_req, { params }) {
+  const id = String(params.id);
+  await prisma.operador.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
 }

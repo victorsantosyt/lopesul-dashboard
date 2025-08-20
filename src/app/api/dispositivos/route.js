@@ -1,29 +1,38 @@
+// src/app/api/dispositivos/route.js
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
 
-
-
+// LISTAR
 export async function GET() {
-  const operadores = await prisma.operador.findMany({
-    orderBy: { criadoEm: 'desc' },
-  });
-  return new Response(JSON.stringify(operadores), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  try {
+    const dispositivos = await prisma.dispositivo.findMany({
+      orderBy: { criadoEm: 'desc' },
+      include: {
+        // Seu schema de Frota não tem "nome", então só retornamos o id.
+        frota: { select: { id: true } },
+      },
+    });
+    return NextResponse.json(dispositivos);
+  } catch (e) {
+    console.error('GET /api/dispositivos', e);
+    return NextResponse.json({ error: 'Erro ao listar dispositivos' }, { status: 500 });
+  }
 }
 
-export async function POST(request) {
-  const data = await request.json();
-  if (!data.nome || !data.senha) {
-    return new Response('Nome e senha são obrigatórios.', { status: 400 });
+// CRIAR (opcional)
+export async function POST(req) {
+  try {
+    const { ip, frotaId } = await req.json();
+    if (!ip || !frotaId) {
+      return NextResponse.json({ error: 'ip e frotaId são obrigatórios.' }, { status: 400 });
+    }
+    const created = await prisma.dispositivo.create({
+      data: { ip, frotaId },
+      include: { frota: { select: { id: true } } },
+    });
+    return NextResponse.json(created, { status: 201 });
+  } catch (e) {
+    console.error('POST /api/dispositivos', e);
+    return NextResponse.json({ error: 'Erro ao criar dispositivo' }, { status: 500 });
   }
-  const senhaHash = await bcrypt.hash(data.senha, 10);
-  const operador = await prisma.operador.create({
-    data: { nome: data.nome, senha: senhaHash, ativo: true },
-  });
-  return new Response(JSON.stringify(operador), {
-    status: 201,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
