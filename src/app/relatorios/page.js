@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import EChart from "@/components/EChart";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 function fmtBRL(v) {
   return (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
