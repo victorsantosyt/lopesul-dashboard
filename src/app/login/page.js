@@ -3,97 +3,70 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-// evita prerender/CSR bailout no build
+// Desativa ISR/SSG e cache para evitar erros no build
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
-const DUR_OPTIONS = [
-  { key: '3h', label: '3 horas' },
-  { key: '4h', label: '4 horas' },
-  { key: '6h', label: '6 horas' },
-  { key: '24h', label: '24 horas' },
-  { key: 'permanente', label: 'Permanente (~100 dias)' },
-];
+export const revalidate = false;          // <-- precisa ser número >=0 ou false
+export const fetchCache = 'force-no-store';
 
 function LoginInner() {
   const router = useRouter();
-  const sp = useSearchParams();            // <- agora dentro de <Suspense>
-  const next = sp?.get('next') || '/dashboard';
+  const search = useSearchParams();       // ok, está dentro do <Suspense/>
+  const next = search?.get('next') || '/dashboard';
 
-  const [usuario, setUsuario] = useState('');
-  const [senha, setSenha] = useState('');
-  const [duration, setDuration] = useState('4h');
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
 
   async function onSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ usuario, senha, duration }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error || 'Falha no login');
-      router.replace(next);
-    } catch (err) {
-      alert(err.message || 'Usuário ou senha inválidos.');
-    } finally {
+    setErr('');
+
+    const data = new FormData(e.currentTarget);
+    const usuario = data.get('usuario')?.toString() || '';
+    const senha   = data.get('senha')?.toString() || '';
+    const duration = data.get('duration')?.toString() || ''; // "3h" | "4h" | "6h" | "24h" | "permanente"
+
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ usuario, senha, duration }),
+    });
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setErr(j?.error || 'Falha no login');
       setLoading(false);
+      return;
     }
+    router.replace(next);
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F0F6FA] dark:bg-[#1a2233]">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm bg-white dark:bg-[#232e47] p-6 rounded-xl shadow space-y-4"
-      >
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Entrar</h1>
+    <form onSubmit={onSubmit} className="max-w-md mx-auto p-6 space-y-4">
+      <h1 className="text-2xl font-semibold">Entrar</h1>
 
-        <input
-          value={usuario}
-          onChange={(e) => setUsuario(e.target.value)}
-          placeholder="Usuário"
-          className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-[#1a2233] text-gray-800 dark:text-gray-100"
-        />
-        <input
-          type="password"
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          placeholder="Senha"
-          className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-[#1a2233] text-gray-800 dark:text-gray-100"
-        />
+      <input name="usuario" placeholder="Usuário" className="w-full border px-3 py-2 rounded" />
+      <input name="senha" type="password" placeholder="Senha" className="w-full border px-3 py-2 rounded" />
 
-        <div>
-          <label className="block text-sm mb-1 text-gray-600 dark:text-gray-300">
-            Duração da sessão
-          </label>
-          <select
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-[#1a2233] text-gray-800 dark:text-gray-100"
-          >
-            {DUR_OPTIONS.map((o) => (
-              <option key={o.key} value={o.key}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+      {/* seletor de duração da sessão */}
+      <select name="duration" className="w-full border px-3 py-2 rounded" defaultValue="4h">
+        <option value="3h">3 horas</option>
+        <option value="4h">4 horas</option>
+        <option value="6h">6 horas</option>
+        <option value="24h">24 horas</option>
+        <option value="permanente">Permanente (~100d)</option>
+      </select>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-md"
-        >
-          {loading ? 'Entrando…' : 'Entrar'}
-        </button>
-      </form>
-    </div>
+      {err && <div className="text-red-600 text-sm">{err}</div>}
+
+      <button disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded">
+        {loading ? 'Entrando…' : 'Entrar'}
+      </button>
+    </form>
   );
 }
 
-export default function LoginPage() {
+export default function Page() {
   return (
     <Suspense fallback={<div />}>
       <LoginInner />
