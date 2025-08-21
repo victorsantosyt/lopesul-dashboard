@@ -102,7 +102,7 @@ export default function RelatoriosPage() {
     xAxis: { ...lineBase.xAxis, data: pagosLabels },
     series: [
       {
-        name: "Pagos",
+        name: "pagos",
         type: "line",
         smooth: true,
         showSymbol: false,
@@ -143,7 +143,12 @@ export default function RelatoriosPage() {
     ],
   };
 
-  const resumo = data?.resumo ?? { totalVendas: 0, receita: 0, mediaTempoAcesso: "0 min", pagamentos: { pagos: 0, pendentes: 0, expirados: 0 } };
+  const resumo = data?.resumo ?? {
+    totalVendas: 0,
+    receita: 0,
+    mediaTempoAcesso: "0 min",
+    pagamentos: { pagos: 0, pendentes: 0, expirados: 0 }
+  };
 
   return (
     <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#0f172a] min-h-screen transition-colors">
@@ -176,32 +181,49 @@ export default function RelatoriosPage() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs com cores suaves */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-xl p-4 shadow bg-white dark:bg-[#111827]">
-          <div className="text-sm text-gray-500 dark:text-gray-400">Vendas (total)</div>
-          <div className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+        {/* Vendas (total) — amarelo */}
+        <div className="
+          rounded-xl p-4 shadow border
+          bg-yellow-50  border-yellow-200  text-yellow-900
+          dark:bg-yellow-500/10 dark:border-yellow-700 dark:text-yellow-200
+        ">
+          <div className="text-sm opacity-90">Vendas (total)</div>
+          <div className="mt-1 text-2xl font-bold">
             {fmtBRL(resumo.totalVendas ?? 0)}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs opacity-80">
             {resumo.qtdVendas ?? 0} operações
           </div>
         </div>
-        <div className="rounded-xl p-4 shadow bg-white dark:bg-[#111827]">
-          <div className="text-sm text-gray-500 dark:text-gray-400">Pagamentos confirmados</div>
-          <div className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+
+        {/* Pagamentos confirmados — verde */}
+        <div className="
+          rounded-xl p-4 shadow border
+          bg-green-50  border-green-200  text-green-900
+          dark:bg-green-500/10 dark:border-green-700 dark:text-green-200
+        ">
+          <div className="text-sm opacity-90">Pagamentos confirmados</div>
+          <div className="mt-1 text-2xl font-bold">
             {fmtBRL(resumo.receita ?? 0)}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs opacity-80">
             {resumo.pagamentos?.pagos ?? 0} pagos • {resumo.pagamentos?.pendentes ?? 0} pend. • {resumo.pagamentos?.expirados ?? 0} exp.
           </div>
         </div>
-        <div className="rounded-xl p-4 shadow bg-white dark:bg-[#111827]">
-          <div className="text-sm text-gray-500 dark:text-gray-400">Operação</div>
-          <div className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+
+        {/* Operação — azul */}
+        <div className="
+          rounded-xl p-4 shadow border
+          bg-blue-50  border-blue-200  text-blue-900
+          dark:bg-blue-500/10 dark:border-blue-700 dark:text-blue-200
+        ">
+          <div className="text-sm opacity-90">Operação</div>
+          <div className="mt-1 text-2xl font-bold">
             {data?.inventario?.frotas ?? 0} frotas / {data?.inventario?.dispositivos ?? 0} disp.
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs opacity-80">
             {data?.operacao?.operadores ?? 0} oper. • {data?.operacao?.sessoesAtivas ?? 0} sessões ativas
           </div>
         </div>
@@ -213,24 +235,33 @@ export default function RelatoriosPage() {
           <div className="text-sm font-medium mb-2" style={{ color: titleColor }}>
             Vendas por dia
           </div>
-          {loading ? <div className="h-[320px] animate-pulse bg-gray-200/50 dark:bg-white/5 rounded-lg" /> :
-            <EChart option={vendasOption} height={320} />}
+          {loading ? (
+            <div className="h-[320px] animate-pulse bg-gray-200/50 dark:bg-white/5 rounded-lg" />
+          ) : (
+            <EChart option={vendasOption} height={320} />
+          )}
         </div>
 
         <div className="rounded-xl p-4 shadow bg-white dark:bg-[#111827]">
           <div className="text-sm font-medium mb-2" style={{ color: titleColor }}>
             Pagamentos confirmados por dia
           </div>
-          {loading ? <div className="h-[320px] animate-pulse bg-gray-200/50 dark:bg-white/5 rounded-lg" /> :
-            <EChart option={pagosOption} height={320} />}
+          {loading ? (
+            <div className="h-[320px] animate-pulse bg-gray-200/50 dark:bg-white/5 rounded-lg" />
+          ) : (
+            <EChart option={pagosOption} height={320} />
+          )}
         </div>
 
         <div className="lg:col-span-2 rounded-xl p-4 shadow bg-white dark:bg-[#111827]">
           <div className="text-sm font-medium mb-2" style={{ color: titleColor }}>
             Faturamento por Frota
           </div>
-          {loading ? <div className="h-[380px] animate-pulse bg-gray-200/50 dark:bg-white/5 rounded-lg" /> :
-            <EChart option={barrasOption} height={380} />}
+          {loading ? (
+            <div className="h-[380px] animate-pulse bg-gray-200/50 dark:bg-white/5 rounded-lg" />
+          ) : (
+            <EChart option={barrasOption} height={380} />
+          )}
         </div>
       </div>
     </div>

@@ -1,42 +1,64 @@
+// src/app/api/login/route.js
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
+const DUR = {
+  '3h':   3  * 60 * 60,
+  '4h':   4  * 60 * 60,
+  '6h':   6  * 60 * 60,
+  '24h':  24 * 60 * 60,
+  'permanente': 100 * 24 * 60 * 60, // ~100 dias
+};
+
+// lê default do Config
+async function getDefaultSeconds() {
+  try {
+    const row = await prisma.config.findUnique({ where: { key: 'sessionDefault' }});
+    return Number(row?.value) > 0 ? Number(row.value) : (4 * 60 * 60);
+  } catch {
+    return 4 * 60 * 60;
+  }
+}
+
 export async function POST(req) {
   try {
-    const { usuario, nome, senha } = await req.json();
+    const { usuario, nome, senha, duration } = await req.json();
     const login = (usuario ?? nome ?? '').trim();
 
     if (!login || !senha) {
       return NextResponse.json({ error: 'Usuário e senha são obrigatórios.' }, { status: 400 });
     }
 
-    // No schema/cadastro atual o campo é "nome"
     const op = await prisma.operador.findFirst({
-      where: { nome: login },
-      select: { id: true, nome: true, senha: true },
+      where: { nome: login },                 // seu schema usa "nome" mapeado para coluna "usuario"
+      select: { id: true, nome: true, senha: true, ativo: true },
     });
-
-    if (!op) {
+    if (!op || op.ativo === false) {
       return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
     }
 
-    // Se a senha no banco estiver hasheada ($2a/$2b/$2y), usa bcrypt; senão, compara texto.
     const isHash = typeof op.senha === 'string' && /^\$2[aby]\$/.test(op.senha);
     const ok = isHash ? await bcrypt.compare(senha, op.senha) : senha === op.senha;
-
     if (!ok) {
       return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
     }
 
-    // Seta cookie de sessão simples (middleware só checa presença do cookie)
+    // escolhe duração: 1) body.duration => DUR[...]  2) default do servidor
+    const chosen = (duration && DUR[duration]) || await getDefaultSeconds();
+
     const res = NextResponse.json({ id: op.id, nome: op.nome });
     res.cookies.set('token', 'ok', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 8, // 8h
+      maxAge: chosen,
+    });
+    res.cookies.set('op', encodeURIComponent(op.nome), { path: '/', maxAge: chosen });
+    res.cookies.set('is_admin', op.nome.toLowerCase() === 'admin' ? '1' : '0', {
+      path: '/',
+      maxAge: chosen
     });
     return res;
   } catch (e) {
