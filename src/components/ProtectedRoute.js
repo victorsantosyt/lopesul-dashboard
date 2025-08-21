@@ -1,21 +1,34 @@
 'use client';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { useAuth } from '../context/AuthContext'; // Caminho relativo corrigido
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 
 export default function ProtectedRoute({ children }) {
+  const [ok, setOk] = useState(false);
   const router = useRouter();
-  const { usuario, loading } = useAuth();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (!loading && !usuario) {
-      router.push('/login');
-    }
-  }, [usuario, loading, router]);
+    (async () => {
+      // precisa estar logado (middleware já força isso via cookie 'token')
+      // checa manutenção
+      try {
+        const cfg = await fetch('/api/configuracoes', { cache: 'no-store' }).then(r => r.json());
+        const maint = !!cfg?.maintenance;
 
-  if (loading) return <p>Carregando...</p>;
+        // simples: admin via cookie
+        const isAdmin = typeof document !== 'undefined' && document.cookie.includes('is_admin=1');
 
-  if (!usuario) return null; // Evita renderizar conteúdo antes do redirect
+        if (maint && !isAdmin && pathname !== '/manutencao') {
+          router.replace('/manutencao');
+          return;
+        }
+        setOk(true);
+      } catch {
+        setOk(true); // não travar se API falhar
+      }
+    })();
+  }, [router, pathname]);
 
-  return <>{children}</>;
+  if (!ok) return null;
+  return children;
 }

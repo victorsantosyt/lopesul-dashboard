@@ -113,3 +113,8 @@ enum Status {
   EXPIRADO
   CANCELADO
 }
+model Config {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
