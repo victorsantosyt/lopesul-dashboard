@@ -18,6 +18,8 @@ const PUBLIC_APIS = [
   '/api/verificar-pagamento',
   '/api/liberar-acesso',
   '/api/pix-webhook',
++ '/api/auth/session-preference',
++ '/api/configuracoes'
 ];
 
 export function middleware(req) {

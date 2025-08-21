@@ -3,12 +3,18 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
+// topo do arquivo
 const DUR = {
-  '3h':   3  * 60 * 60,
-  '4h':   4  * 60 * 60,
-  '6h':   6  * 60 * 60,
-  '24h':  24 * 60 * 60,
-  'permanente': 100 * 24 * 60 * 60, // ~100 dias
+  // aceita as duas nomenclaturas
+  "30m": 30 * 60,
+  "1h":  1  * 60 * 60,
+  "3h":  3  * 60 * 60,
+  "4h":  4  * 60 * 60,
+  "6h":  6  * 60 * 60,
+  "8h":  8  * 60 * 60,
+  "24h": 24 * 60 * 60,
+  "permanente": 100 * 24 * 60 * 60,
+  "permanent":  100 * 24 * 60 * 60,
 };
 
 // lê default do Config
