@@ -4,26 +4,43 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(req) {
   try {
-    const { usuario, senha } = await req.json();
-    if (!usuario || !senha) {
+    const { usuario, nome, senha } = await req.json();
+    const login = (usuario ?? nome ?? '').trim();
+
+    if (!login || !senha) {
       return NextResponse.json({ error: 'Usuário e senha são obrigatórios.' }, { status: 400 });
     }
 
-    const op = await prisma.operador.findUnique({ where: { usuario } });
-    if (!op) return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
+    // No schema/cadastro atual o campo é "nome"
+    const op = await prisma.operador.findFirst({
+      where: { nome: login },
+      select: { id: true, nome: true, senha: true },
+    });
 
-    const ok = await bcrypt.compare(senha, op.senha);
-    if (!ok) return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
+    if (!op) {
+      return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
+    }
 
-    const res = NextResponse.json({ id: op.id, usuario: op.usuario });
-    res.cookies.set('token', op.id, {
-      httpOnly: true, sameSite: 'lax', path: '/',
-      maxAge: 60 * 60 * 12,
+    // Se a senha no banco estiver hasheada ($2a/$2b/$2y), usa bcrypt; senão, compara texto.
+    const isHash = typeof op.senha === 'string' && /^\$2[aby]\$/.test(op.senha);
+    const ok = isHash ? await bcrypt.compare(senha, op.senha) : senha === op.senha;
+
+    if (!ok) {
+      return NextResponse.json({ error: 'Usuário ou senha inválidos.' }, { status: 401 });
+    }
+
+    // Seta cookie de sessão simples (middleware só checa presença do cookie)
+    const res = NextResponse.json({ id: op.id, nome: op.nome });
+    res.cookies.set('token', 'ok', {
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 8, // 8h
     });
     return res;
   } catch (e) {
     console.error('POST /api/login', e);
-    return NextResponse.json({ error: 'Erro ao fazer login' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

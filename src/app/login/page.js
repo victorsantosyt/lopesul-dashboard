@@ -42,7 +42,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-[#1a2233] p-4 transition-colors">
       <div className="bg-white dark:bg-[#232e47] shadow-lg rounded-lg p-6 w-full max-w-sm transition-colors">
         <h1 className="text-xl font-bold mb-4 text-center text-gray-800 dark:text-white">
-          Bem vindo ao Lopesul dashboard
+          Bem vindo Operador
         </h1>
 
         <form onSubmit={handleLogin}>
