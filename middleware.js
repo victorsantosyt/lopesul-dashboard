@@ -24,17 +24,17 @@ export function middleware(req) {
   const { pathname, search } = req.nextUrl;
   const token = req.cookies.get('token')?.value;
 
-  // 1) Arquivos e caminhos públicos (HTML estático, assets, _next, login)
+  // 1) Arquivos e caminhos públicos
   if (PUBLIC_FILES.has(pathname) || PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
   // 2) APIs
   if (pathname.startsWith('/api')) {
-    // Preflight CORS → deixa passar
+    // Preflight CORS
     if (req.method === 'OPTIONS') return NextResponse.next();
 
-    // APIs públicas do captive
+    // APIs públicas (captive)
     if (PUBLIC_APIS.some(p => pathname.startsWith(p))) {
       return NextResponse.next();
     }
@@ -46,13 +46,11 @@ export function middleware(req) {
     return NextResponse.next();
   }
 
-  // 3) Páginas (App Router)
-  // login é público
+  // 3) Páginas
   if (pathname.startsWith('/login')) {
     return NextResponse.next();
   }
 
-  // páginas protegidas (dashboard etc.)
   if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
@@ -63,7 +61,7 @@ export function middleware(req) {
   return NextResponse.next();
 }
 
-// Rodar em tudo, exceto estáticos óbvios
+// Evita rodar em estáticos óbvios
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|assets/|captive/).*)',

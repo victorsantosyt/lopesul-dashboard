@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
@@ -8,28 +8,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- Tabelas administrativas / domínio ---
+
 
 model Operador {
-  id       String   @id @default(uuid())
-  usuario  String   @unique
+  id       String  @id @default(uuid())
+  nome     String  @unique @map("usuario")  // ← é isso que queremos
   senha    String
+  ativo    Boolean @default(true)
   criadoEm DateTime @default(now()) @map("createdAt")
+  @@map("operadores")
 }
 
 model Frota {
   id           String        @id @default(uuid())
   criadoEm     DateTime      @default(now()) @map("createdAt")
+  nome         String?
   dispositivos Dispositivo[]
   vendas       Venda[]
+
+  @@index([criadoEm])
 }
 
 model Venda {
   id      String   @id @default(uuid())
   frotaId String
-  frota   Frota    @relation(fields: [frotaId], references: [id])
   valor   Float
   data    DateTime @default(now())
+  frota   Frota    @relation(fields: [frotaId], references: [id])
+
+  @@index([frotaId])
+  @@index([data])
 }
 
 model Dispositivo {
@@ -38,76 +46,70 @@ model Dispositivo {
   criadoEm DateTime @default(now()) @map("createdAt")
   frotaId  String
   frota    Frota    @relation(fields: [frotaId], references: [id])
+
+  @@index([frotaId])
+  @@index([ip])
 }
 
-// --- Pagamentos / Sessões ---
+
 
 model Pagamento {
-  id        String  @id @default(cuid())
+  id        String        @id @default(cuid())
   valor     Float
   descricao String
-  chavePix  String? // opcional
-  payload   String? // opcional (QR/payload do Pix)
-  status    String  @default("pendente") // 'pendente' | 'pago' | 'expirado'
+  chavePix  String?
+  payload   String?
+  status    String        @default("pendente")
   plano     String
-
-  // para casar com as rotas de API:
-  ip       String?
-  mac      String?
-  roteador String?
-
-  // (legado, se quiser manter compatibilidade com código antigo)
-  // ipCliente   String?
-  // macCliente  String?
-
-  criadoEm DateTime  @default(now())
-  pagoEm   DateTime?
-  expiraEm DateTime?
-
-  // relação com SessaoAtiva (invertida)
-  sessoes SessaoAtiva[]
-
-  // Se seu PSP te fornecer um identificador único (txid/e2eid), vale manter único:
-  // txid     String? @unique
+  criadoEm  DateTime      @default(now())
+  pagoEm    DateTime?
+  expiraEm  DateTime?
+  ip        String?
+  mac       String?
+  roteador  String?
+  sessoes   SessaoAtiva[]
 
   @@index([descricao, valor, status])
   @@index([mac])
   @@index([criadoEm])
+  @@index([status, pagoEm])
   @@map("pagamentos")
 }
 
 model SessaoAtiva {
-  id         String   @id @default(cuid())
-  ipCliente  String   @unique
-  macCliente String?
-  plano      String
-  inicioEm   DateTime @default(now())
-  expiraEm   DateTime
-  ativo      Boolean  @default(true)
-
+  id          String     @id @default(cuid())
+  ipCliente   String     @unique
+  macCliente  String?
+  plano       String
+  inicioEm    DateTime   @default(now())
+  expiraEm    DateTime
+  ativo       Boolean    @default(true)
   pagamentoId String?
-  pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id], onDelete: SetNull)
+  pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id])
 
+  @@index([ativo])
   @@map("sessoes_ativas")
 }
+
+
+model Transacao {
+  id        String    @id @default(cuid())
+  txid      String    @unique
+  valor     Decimal   @db.Decimal(10, 2)
+  descricao String
+  status    Status    @default(PENDENTE)
+  mac       String?
+  ip        String?
+  minutos   Int?      @default(120)
+  linkOrig  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
+}
+
 enum Status {
   PENDENTE
   PAGO
   EXPIRADO
   CANCELADO
-}
-
-model Transacao {
-  id        String   @id @default(cuid())
-  txid      String   @unique
-  valor     Decimal  @db.Decimal(10, 2)
-  descricao String
-  status    Status   @default(PENDENTE)
-  mac       String?
-  ip        String?
-  minutos   Int?     @default(120)
-  linkOrig  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  paidAt    DateTime?
 }
