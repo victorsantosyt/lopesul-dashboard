@@ -18,8 +18,10 @@ const PUBLIC_APIS = [
   '/api/verificar-pagamento',
   '/api/liberar-acesso',
   '/api/pix-webhook',
-+ '/api/auth/session-preference',
-+ '/api/configuracoes'
+  '/api/auth/session-preference',
+  '/api/configuracoes',
+  '/api/login',   // precisa ser público para logar
+  '/api/logout',  // opcional: permite deslogar sem exigir token
 ];
 
 export function middleware(req) {
@@ -36,7 +38,7 @@ export function middleware(req) {
     // Preflight CORS
     if (req.method === 'OPTIONS') return NextResponse.next();
 
-    // APIs públicas (captive)
+    // APIs públicas (captive / auth básicas)
     if (PUBLIC_APIS.some(p => pathname.startsWith(p))) {
       return NextResponse.next();
     }
