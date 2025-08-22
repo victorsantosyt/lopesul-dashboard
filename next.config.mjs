@@ -8,11 +8,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   // Alias @ -> src
   webpack: (config) => {
-    config.resolve.alias["@" ] = path.resolve(process.cwd(), "src");
+    config.resolve.alias["@"] = path.resolve(process.cwd(), "src");
     return config;
   },
 
-  // Fixa a raiz do projeto p/ evitar lockfiles fora interferindo
+  // Fixa a raiz do projeto pra evitar lockfile fora interferir
   outputFileTracingRoot: path.join(__dirname),
 };
 

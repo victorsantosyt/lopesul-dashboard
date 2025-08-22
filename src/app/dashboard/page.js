@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ProtectedRoute from "../../components/ProtectedRoute";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+
 
 const fmtBRL = (v) =>
   (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

@@ -23,7 +23,7 @@ const COLORS = {
   divider: 'rgba(255,255,255,0.12)',
   border: 'rgba(0,0,0,0.25)',
   btn: 'rgba(30, 77, 188, 0.99)',
-  btnHover: '#529737',
+  btnHover: 'rgba(188, 35, 30, 0.99)',
 };
 
 const navLinks = [
