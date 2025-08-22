@@ -1,9 +1,148 @@
+/* -------------------------------------------------------
+   Tailwind + fonte
+------------------------------------------------------- */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Inter', sans-serif;
+/* -------------------------------------------------------
+   Tokens (light/dark) para bg, texto, borda, etc.
+   OBS: Tailwind usa a classe .dark no <html>.
+------------------------------------------------------- */
+:root {
+  --bg:           #f8fafc;  /* slate-50   */
+  --text:         #0f172a;  /* slate-900  */
+  --card:         #ffffff;  /* white      */
+  --muted:        #475569;  /* slate-600  */
+  --border:       #e2e8f0;  /* slate-200  */
+  --input:        #ffffff;  /* white      */
+  --ring:         rgba(59, 130, 246, .30); /* blue-500/30 */
+  --ring-border:  #60a5fa;  /* blue-400   */
+}
+
+html.dark {
+  --bg:           #0f172a;  /* slate-900  */
+  --text:         #e2e8f0;  /* slate-200  */
+  --card:         #1f2937;  /* slate-800  */
+  --muted:        #94a3b8;  /* slate-400  */
+  --border:       #334155;  /* slate-700  */
+  --input:        #0b1220;  /* slate-950- */
+  --ring:         rgba(59, 130, 246, .40); /* blue-500/40 */
+  --ring-border:  #60a5fa;  /* blue-400   */
+}
+
+/* ajuda os controles nativos a respeitarem o tema */
+html { color-scheme: light dark; }
+
+/* -------------------------------------------------------
+   Base
+------------------------------------------------------- */
+@layer base {
+  html, body { height: 100%; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  /* placeholders legíveis no dark */
+  ::placeholder { color: var(--muted); opacity: .85; }
+
+  /* inputs base (leve – deixa Tailwind sobrepor quando precisar) */
+  :where(input, select, textarea) {
+    background-color: var(--input);
+    color: var(--text);
+    border: 1px solid var(--border);
+    background-clip: padding-box;      /* evita halo claro */
+    outline: none;
+  }
+
+  :where(input, select, textarea):focus {
+    border-color: var(--ring-border);
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* autofill (WebKit & Firefox) sem tinta branca no dark */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text);
+    transition: background-color 9999s ease-in-out 0s !important;
+    box-shadow: 0 0 0px 1000px var(--input) inset !important;
+  }
+  input:-moz-autofill {
+    -moz-text-fill-color: var(--text);
+    box-shadow: 0 0 0px 1000px var(--input) inset !important;
+  }
+
+  /* tira o X do search (evita flash claro) */
+  input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+  /* refinamentos */
+  hr  { border-color: var(--border); }
+  kbd { background: var(--card); border: 1px solid var(--border); }
+
+  /* transições suaves (sem exagero) */
+  @media (prefers-reduced-motion: no-preference) {
+    body, input, select, textarea {
+      transition: background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+  }
+}
+
+/* -------------------------------------------------------
+   Componentes utilitários coerentes (usar nas páginas)
+------------------------------------------------------- */
+@layer components {
+  /* superfície neutra: mesma pele para cards, painéis, etc. */
+  .surface {
+    @apply bg-white/95 dark:bg-slate-800/80
+           supports-[backdrop-filter]:backdrop-blur
+           supports-[backdrop-filter]:bg-white/70
+           supports-[backdrop-filter]:dark:bg-slate-800/60
+           border rounded-xl shadow-sm;
+    border-color: var(--border);
+  }
+
+  .card  { @apply surface rounded-2xl; }
+  .panel { @apply surface rounded-xl;  }
+
+  .kpi { @apply card p-4; }
+
+  .table-card { @apply card p-4 overflow-hidden; }
+
+  /* tabela padrão */
+  .table { @apply w-full text-sm; color: var(--text); }
+  .thead {
+    @apply uppercase text-xs;
+    background: color-mix(in oklab, var(--bg), transparent 30%);
+    color: var(--muted);
+  }
+  .tr { border-top: 1px solid var(--border); }
+
+  /* input “pronto” pra usar (quando não quiser escrever as classes toda vez) */
+  .input {
+    @apply w-full rounded-md px-3 py-2
+           placeholder:text-slate-400 dark:placeholder:text-slate-500
+           focus:outline-none;
+    background-color: var(--input);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md
+           px-4 py-2 font-medium text-white
+           bg-blue-600 hover:bg-blue-700;
+  }
+
+  .btn-muted {
+    @apply inline-flex items-center justify-center rounded-md
+           px-3 py-2 font-medium
+           bg-slate-200 text-slate-800 hover:bg-slate-300
+           dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600;
+  }
 }
