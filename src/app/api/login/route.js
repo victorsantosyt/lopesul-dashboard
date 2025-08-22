@@ -51,7 +51,14 @@ export async function POST(req) {
     }
 
     // escolhe duração: 1) body.duration => DUR[...]  2) default do servidor
-    const chosen = (duration && DUR[duration]) || await getDefaultSeconds();
+  // ...
+const pref = req.cookies.get('session_pref')?.value; // '30m' | '1h' | '4h' | '8h' | '24h' | 'permanent'
+const chosen =
+  (duration && DUR[duration]) ? DUR[duration] :
+  (pref && DUR[pref]) ? DUR[pref] :
+  await getDefaultSeconds();
+// ...
+
 
     const res = NextResponse.json({ id: op.id, nome: op.nome });
     res.cookies.set('token', 'ok', {
