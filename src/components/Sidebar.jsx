@@ -29,7 +29,7 @@ const COLORS = {
 const navLinks = [
   { href: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
   { href: '/pagamentos',    label: 'Pagamentos',    icon: DollarSign },
-  { href: '/relatorios',    label: 'Análises',      icon: BarChart2 },
+  { href: '/relatorios',    label: 'Relatorios',      icon: BarChart2 },
   { href: '/acessos',       label: 'Acessos',       icon: Users },
   { href: '/frotas',        label: 'Frotas',        icon: Bus },
   { href: '/dispositivos',  label: 'Dispositivos',  icon: Server },

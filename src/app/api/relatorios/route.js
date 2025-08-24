@@ -26,14 +26,13 @@ export async function GET(req) {
     const fromQ = url.searchParams.get('from'); // YYYY-MM-DD
     const toQ   = url.searchParams.get('to');   // YYYY-MM-DD
 
-    // Default: últimos 30 dias (inclui hoje)
+    // Default: últimos 30 dias
     const today = new Date();
     let start = new Date(today);
     start.setDate(start.getDate() - 29);
     start = atStartOfDay(start);
     let end = atEndOfDay(today);
 
-    // Se vierem parâmetros válidos, usa-os
     if (fromQ && !isYMD(fromQ)) {
       return NextResponse.json({ error: 'Parâmetro "from" inválido. Use YYYY-MM-DD.' }, { status: 400 });
     }
@@ -50,67 +49,84 @@ export async function GET(req) {
       return NextResponse.json({ error: '"from" deve ser anterior ou igual a "to".' }, { status: 400 });
     }
 
-    // (Opcional) limite de intervalo p/ evitar consultas gigantes
-    const MAX_DAYS = 185; // ~6 meses
+    // Limite de intervalo
+    const MAX_DAYS = 185;
     const daysDiff = Math.ceil((atStartOfDay(end) - atStartOfDay(start)) / (1000*60*60*24)) + 1;
     if (daysDiff > MAX_DAYS) {
       return NextResponse.json({ error: `Intervalo muito grande. Máximo de ${MAX_DAYS} dias.` }, { status: 400 });
     }
 
-    // Base de dias para séries
     const dias = rangeDays(start, end);
 
-    // Coletas em paralelo
+    // Coletas em paralelo (tolerantes se alguma tabela não existir)
     const [
       frotas,
       dispositivosCount,
       operadoresCount,
       sessoesAtivasCount,
 
-      vendasPeriodo,             // vendas dentro do período
-      pagamentosPeriodo,         // pagamentos dentro do período (para séries/valores)
-      vendasPorFrotaPeriodoAgg,  // soma por frota dentro do período
+      vendasPeriodo,                    // vendas no período
+      pagamentosPeriodoPago,            // pagamentos pagos no período (pelo updatedAt)
+      vendasPorFrotaPeriodoAgg,         // soma de vendas por frota no período
 
-      // Totais globais (inventário) ficam fora do período; mas totais financeiros abaixo são do período
+      vendasAggPeriodo,                 // agregados de vendas (período)
+      pagosCentAggPeriodo,              // soma em centavos de pagamentos pagos (período)
+      qtdPagos,
+      qtdPendentes,
+      qtdExpirados,
     ] = await Promise.all([
+      // frotas + count dispositivos (inventário, não filtra por período)
       prisma.frota.findMany({
         orderBy: { criadoEm: 'desc' },
         include: { _count: { select: { dispositivos: true } } },
-      }),
-      prisma.dispositivo.count(),
-      prisma.operador.count(),
-      prisma.sessaoAtiva.count({ where: { ativo: true } }),
+      }).catch(() => []),
+
+      prisma.dispositivo.count().catch(() => 0),
+      prisma.operador.count().catch(() => 0),
+      prisma.sessaoAtiva.count({ where: { ativo: true } }).catch(() => 0),
 
       prisma.venda.findMany({
         where: { data: { gte: start, lte: end } },
-      }),
+        select: { data: true, valor: true, frotaId: true },
+      }).catch(() => []),
+
+      // consideramos "momento do pagamento" como atualizadoEm quando status virou 'pago'
       prisma.pagamento.findMany({
-        where: { criadoEm: { gte: start, lte: end } }, // usamos criadoEm p/ série; status filtra abaixo
-      }),
+        where: { status: 'pago', atualizadoEm: { gte: start, lte: end } },
+        select: { atualizadoEm: true, valorCent: true },
+      }).catch(() => []),
+
       prisma.venda.groupBy({
         by: ['frotaId'],
         where: { data: { gte: start, lte: end } },
         _sum: { valor: true },
-      }),
-    ]);
+      }).catch(() => []),
 
-    // Resumo financeiro do período
-    const [vendasAggPeriodo, pagosAggPeriodo, qtdPagos, qtdPendentes, qtdExpirados] = await Promise.all([
       prisma.venda.aggregate({
         _sum: { valor: true },
         _count: { _all: true },
         where: { data: { gte: start, lte: end } },
-      }),
+      }).catch(() => ({ _sum: { valor: 0 }, _count: { _all: 0 } })),
+
       prisma.pagamento.aggregate({
-        _sum: { valor: true },
-        where: { status: 'pago', pagoEm: { gte: start, lte: end } },
-      }),
-      prisma.pagamento.count({ where: { status: 'pago',  pagoEm:   { gte: start, lte: end } } }),
-      prisma.pagamento.count({ where: { status: 'pendente', criadoEm: { gte: start, lte: end } } }),
-      prisma.pagamento.count({ where: { status: 'expirado', criadoEm: { gte: start, lte: end } } }),
+        _sum: { valorCent: true },
+        where: { status: 'pago', atualizadoEm: { gte: start, lte: end } },
+      }).catch(() => ({ _sum: { valorCent: 0 } })),
+
+      prisma.pagamento.count({
+        where: { status: 'pago', atualizadoEm: { gte: start, lte: end } },
+      }).catch(() => 0),
+
+      prisma.pagamento.count({
+        where: { status: 'pendente', criadoEm: { gte: start, lte: end } },
+      }).catch(() => 0),
+
+      prisma.pagamento.count({
+        where: { status: 'expirado', criadoEm: { gte: start, lte: end } },
+      }).catch(() => 0),
     ]);
 
-    // Séries diárias (vendas e pagamentos pagos) dentro do período
+    // Séries diárias
     const vendasMap = new Map(dias.map(k => [k, 0]));
     for (const v of vendasPeriodo) {
       const k = ymd(new Date(v.data));
@@ -118,25 +134,21 @@ export async function GET(req) {
     }
     const vendasPorDia = dias.map(k => ({ dia: k, vendas: vendasMap.get(k) || 0 }));
 
-    // Para pagamentos, somamos somente os "pago" no dia do pagamento (pagoEm). Se não houver pagoEm, cai fora.
     const pagosMap = new Map(dias.map(k => [k, 0]));
-    for (const p of pagamentosPeriodo) {
-      if (p.status !== 'pago' || !p.pagoEm) continue;
-      const k = ymd(new Date(p.pagoEm));
-      if (k >= ymd(start) && k <= ymd(end)) {
-        pagosMap.set(k, toNumber(pagosMap.get(k)) + toNumber(p.valor));
-      }
+    for (const p of pagamentosPeriodoPago) {
+      const k = ymd(new Date(p.atualizadoEm));
+      pagosMap.set(k, toNumber(pagosMap.get(k)) + toNumber(p.valorCent) / 100);
     }
     const pagamentosPorDia = dias.map(k => ({ dia: k, pagos: pagosMap.get(k) || 0 }));
 
-    // Faturamento por frota (no período)
+    // Faturamento por frota (no período, usando Vendas)
     const somaPorFrota = new Map(
       vendasPorFrotaPeriodoAgg.map(v => [v.frotaId, toNumber(v._sum.valor)])
     );
-    const porFrota = frotas
+    const porFrota = (frotas || [])
       .map(f => ({
         id: f.id,
-        nome: f.nome ?? `Frota ${f.id.slice(0, 4)}`, // fallback (se depois adicionar nome no schema, usa aqui)
+        nome: f.nome ?? `Frota ${f.id.slice(0, 4)}`,
         valor: somaPorFrota.get(f.id) || 0,
         dispositivos: f._count?.dispositivos || 0,
         status: (f._count?.dispositivos || 0) > 0 ? 'desconhecido' : 'offline',
@@ -144,21 +156,17 @@ export async function GET(req) {
       .sort((a, b) => b.valor - a.valor);
 
     const resposta = {
-      periodo: { // devolvemos as datas finais usadas (útil pra UI)
-        from: ymd(start),
-        to: ymd(end),
-        days: dias.length,
-      },
+      periodo: { from: ymd(start), to: ymd(end), days: dias.length },
       resumo: {
         totalVendas: toNumber(vendasAggPeriodo._sum.valor),
         qtdVendas: vendasAggPeriodo._count._all,
 
-        totalPagos: toNumber(pagosAggPeriodo._sum.valor),
+        totalPagos: toNumber(pagosCentAggPeriodo._sum.valorCent) / 100,
         qtdPagos,
         qtdPendentes,
         qtdExpirados,
 
-        frotasCount: frotas.length,
+        frotasCount: frotas.length || 0,
         dispositivosCount,
         operadoresCount,
         sessoesAtivasCount,

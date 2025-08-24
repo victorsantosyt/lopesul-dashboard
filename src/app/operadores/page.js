@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API = "/api/operadores";
 
@@ -15,6 +15,11 @@ export default function OperadoresPage() {
 
   const [loading, setLoading] = useState(false);
   const [loadingLista, setLoadingLista] = useState(false);
+
+  // --- refs para navegação Enter ---
+  const formRef = useRef(null);
+  const nomeRef = useRef(null);
+  const senhaRef = useRef(null);
 
   // garante string sempre (evita .trim() em undefined)
   const safeNome  = (typeof nome  === "string" ? nome  : "").toString();
@@ -82,8 +87,7 @@ export default function OperadoresPage() {
     try {
       const payload = { usuario };
       if (safeSenha.trim()) payload.senha = safeSenha.trim();
-      // idem acima: se o backend tiver campo "ativo" no modelo, inclua:
-      // payload.ativo = ativo;
+      // payload.ativo = ativo; // habilite se existir no backend
 
       const res = await fetch(`${API}/${editandoId}`, {
         method: "PUT",
@@ -120,18 +124,20 @@ export default function OperadoresPage() {
   }
 
   function iniciarEdicao(op) {
-    // compat: aceita tanto op.usuario quanto op.nome (se vier de uma versão antiga)
     setNome(op.usuario ?? op.nome ?? "");
     setSenha("");
     setAtivo(op.ativo ?? true);
     setEditandoId(op.id);
     setModoEdicao(true);
+    // foca no nome ao começar a editar
+    setTimeout(() => nomeRef.current?.focus(), 0);
   }
 
   function cancelarEdicao() {
     setModoEdicao(false);
     setEditandoId(null);
     limparFormulario();
+    setTimeout(() => nomeRef.current?.focus(), 0);
   }
 
   function limparFormulario() {
@@ -146,18 +152,39 @@ export default function OperadoresPage() {
     modoEdicao ? handleEditar() : handleCriar();
   }
 
+  // --- handlers de teclado (Enter) ---
+  const goNext = (nextRef) => (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      nextRef?.current?.focus();
+    }
+  };
+  const submitOnEnter = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      formRef.current?.requestSubmit?.();
+    }
+  };
+
   return (
     <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#1a2233] min-h-screen transition-colors">
       <h1 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Operadores</h1>
 
-      <form onSubmit={onSubmit} className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-end">
+      <form
+        ref={formRef}
+        onSubmit={onSubmit}
+        className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-end"
+      >
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 dark:text-gray-400">Nome</label>
           <input
+            ref={nomeRef}
             type="text"
             placeholder="Nome do operador"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
+            // Enter -> foca senha
+                        onKeyDown={goNext(senhaRef)}
             className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-[#232e47] text-gray-800 dark:text-gray-100"
           />
         </div>
@@ -167,10 +194,12 @@ export default function OperadoresPage() {
             {modoEdicao ? "Nova senha (opcional)" : "Senha"}
           </label>
           <input
+            ref={senhaRef}
             type="password"
             placeholder={modoEdicao ? "Nova senha (opcional)" : "Senha"}
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
+            onKeyDown={submitOnEnter}
             className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-[#232e47] text-gray-800 dark:text-gray-100"
           />
         </div>

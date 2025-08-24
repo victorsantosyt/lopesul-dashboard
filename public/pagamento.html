@@ -6,58 +6,54 @@
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <title>Pagamento Pix - Lopesul Wi-Fi</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/captive/style.css?v=7">
 
-  <!-- seu CSS geral (se tiver) -->
-  <link rel="stylesheet" href="/captive/style.css?v=5">
-
-  <!-- QRious local; se não existir, usa CDN -->
-  <script src="/captive/vendor/qrious.min.js"
-          onerror="(function(){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';document.head.appendChild(s);})();">
+  <!-- QRious local (com defer) + fallback CDN -->
+  <script src="/captive/vendor/qrious.min.js" defer
+          onerror="(function(){
+            var s=document.createElement('script');
+            s.src='https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';
+            s.defer=true;
+            document.head.appendChild(s);
+          })();">
   </script>
 
   <style>
-    /* estilos focados para ficarem próximos do seu layout do print */
-    :root {
+    :root{
       --azul-fundo:#1d3a5a; --azul-botao:#2b79c2; --azul-botao-hover:#2066a6;
       --verde:#63b245; --verde-hover:#529737;
       --card:#ffffff; --sombra:0 20px 40px rgba(0,0,0,.08);
     }
-    body {
-      margin:0; background:var(--azul-fundo); color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
-    }
-    .wrap { min-height:100dvh; display:flex; align-items:flex-start; justify-content:center; padding:36px 16px; }
-    .card { width:100%; max-width:840px; background:transparent; text-align:center; }
-    .logo { width:280px; max-width:70%; height:auto; margin:8px auto 8px; display:block; }
-    h1 { margin:10px 0 6px; font-size:40px; font-weight:800; letter-spacing:.2px; }
-    .bus { width:360px; max-width:80%; height:auto; margin:10px auto 18px; display:block; }
-    .cta { display:inline-block; background:var(--verde); color:#fff; border-radius:26px; padding:12px 18px; font-weight:800; margin:6px 0 18px; }
-    .cta:hover { background:var(--verde-hover); }
-    .grid-planos { display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
-    .btn-plano {
-      background:var(--azul-botao); color:#fff; border:none; border-radius:14px;
-      padding:14px 22px; width:160px; font-weight:800; cursor:pointer; box-shadow:var(--sombra);
-    }
-    .btn-plano:hover { background:var(--azul-botao-hover); }
-    .btn-plano .preco { display:block; font-size:20px; }
-    .btn-plano .duracao { display:block; font-size:18px; opacity:.95; }
+    body{ margin:0; background:var(--azul-fundo); color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; }
+    .wrap{ min-height:100dvh; display:flex; align-items:flex-start; justify-content:center; padding:36px 16px; }
+    .card{ width:100%; max-width:840px; background:transparent; text-align:center; }
+    .logo{ width:280px; max-width:70%; height:auto; margin:8px auto 8px; display:block; }
+    h1{ margin:10px 0 6px; font-size:40px; font-weight:800; letter-spacing:.2px; }
+    .bus{ width:360px; max-width:80%; height:auto; margin:10px auto 18px; display:block; }
+    .cta{ display:inline-block; background:var(--verde); color:#fff; border-radius:26px; padding:12px 18px; font-weight:800; margin:6px 0 18px; }
+    .cta:hover{ background:var(--verde-hover); }
+    .grid-planos{ display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
+    .btn-plano{ background:var(--azul-botao); color:#fff; border:none; border-radius:14px; padding:14px 22px; width:160px; font-weight:800; cursor:pointer; box-shadow:var(--sombra); }
+    .btn-plano:hover{ background:var(--azul-botao-hover); }
+    .btn-plano .preco{ display:block; font-size:20px; }
+    .btn-plano .duracao{ display:block; font-size:18px; opacity:.95; }
 
-    /* checkout (segunda etapa) */
-    .checkout { max-width:420px; margin:0 auto; background:var(--card); color:#222; border-radius:20px; box-shadow:var(--sombra); padding:20px; display:none; }
-    .title-ch { color:#0a73c0; font-weight:800; font-size:22px; margin:6px 0 2px; }
-    .sub-ch { color:#334; margin-bottom:8px; }
-    .qr { display:flex; justify-content:center; margin:12px 0 }
-    .code { background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; font-size:12px; color:#666; max-height:90px; overflow:auto; word-break:break-all }
-    .btn { width:100%; background:#0a73c0; color:#fff; border:0; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:10px }
-    .btn:hover { background:#085fa0 }
-    .pill { margin-top:10px; border-radius:8px; padding:10px; font-weight:700; border:1px solid }
-    .pill.warn { background:#fff3cd; border-color:#ffeaa7; color:#856404 }
-    .pill.info { background:#d1ecf1; border-color:#bee5eb; color:#0c5460 }
-    .pill.ok { background:#d4edda; border-color:#c3e6cb; color:#155724 }
-    .pill.err { background:#f8d7da; border-color:#f5c6cb; color:#721c24 }
-    .back { display:inline-block; margin-top:8px; font-size:.95rem; color:#0a73c0; cursor:pointer }
+    .checkout{ max-width:420px; margin:0 auto; background:var(--card); color:#222; border-radius:20px; box-shadow:var(--sombra); padding:20px; display:none; }
+    .title-ch{ color:#0a73c0; font-weight:800; font-size:22px; margin:6px 0 2px; }
+    .sub-ch{ color:#334; margin-bottom:8px; }
+    .qr{ display:flex; justify-content:center; margin:12px 0 }
+    .code{ background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; font-size:12px; color:#666; max-height:90px; overflow:auto; word-break:break-all }
+    .btn{ width:100%; background:#0a73c0; color:#fff; border:0; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:10px }
+    .btn:hover{ background:#085fa0 }
+    .pill{ margin-top:10px; border-radius:8px; padding:10px; font-weight:700; border:1px solid }
+    .pill.warn{ background:#fff3cd; border-color:#ffeaa7; color:#856404 }
+    .pill.info{ background:#d1ecf1; border-color:#bee5eb; color:#0c5460 }
+    .pill.ok{ background:#d4edda; border-color:#c3e6cb; color:#155724 }
+    .pill.err{ background:#f8d7da; border-color:#f5c6cb; color:#721c24 }
+    .back{ display:inline-block; margin-top:8px; font-size:.95rem; color:#0a73c0; cursor:pointer }
 
-    .rodape { margin-top:26px; opacity:.9 }
-    .rodape img { height:42px; width:auto; }
+    .rodape{ margin-top:26px; opacity:.9 }
+    .rodape img{ height:42px; width:auto; }
   </style>
 </head>
 <body>
@@ -82,8 +78,8 @@
       </div>
 
       <div class="rodape">
-  <img src="/assets/logo-footer.png" alt="Connect - desenvolvedor">
-</div>
+        <img src="/assets/logo-footer.png" alt="Connect - desenvolvedor">
+      </div>
     </div>
 
     <!-- ETAPA 2: CHECKOUT PIX -->
@@ -107,9 +103,9 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const API = ""; // mesmo domínio do backend
+      const API = ""; // mesmo domínio. Se hospedar em outro host/porta, coloque a base aqui.
 
-      // parâmetros do Mikrotik / URL
+      // --- helpers URL/Mikrotik ---
       const get = (n) => new URLSearchParams(location.search).get(n);
       const mac = get("mac") || null;
       const ip = get("ip") || null;
@@ -117,7 +113,7 @@
       const linkOrig = get("link_orig") || get("link-orig") || "";
 
       // estados
-      let TXID = null;
+      let REF = null; // externalId
       let tempoLivre = 120;
       let pollingHandle = null;
       let timerHandle = null;
@@ -125,10 +121,40 @@
       const elEscolha  = document.getElementById('view-escolha');
       const elCheckout = document.getElementById('view-checkout');
 
-      // clique nos planos
+      // ==== Wait QRious ====
+      function waitForQRious(){
+        return new Promise((resolve, reject)=>{
+          let tries = 0;
+          (function tick(){
+            if (window.QRious) return resolve();
+            if (++tries > 120) {
+              const s = document.getElementById('status');
+              s.className = 'pill err';
+              s.innerText = '⚠️ Falha ao carregar QRious. Verifique /captive/vendor/qrious.min.js';
+              return reject(new Error("QRious não carregou"));
+            }
+            setTimeout(tick, 50);
+          })();
+        });
+      }
+
+      // ==== auto-teste visual da lib ====
+      waitForQRious().then(() => {
+        try {
+          new QRious({ element: document.getElementById('qrcode'), value: 'READY', size: 160, background: 'white', foreground: 'black' });
+          document.getElementById("pix-code").innerText = 'READY';
+          setTimeout(()=>{
+            const ctx = document.getElementById('qrcode')?.getContext('2d');
+            ctx && ctx.clearRect(0,0,220,220);
+            document.getElementById("pix-code").innerText = '';
+          }, 1000);
+        } catch(e) { console.error('QRious teste falhou:', e); }
+      }).catch(()=>{ /* ignore */ });
+
+      // ==== clique nos planos ====
       document.querySelectorAll('.btn-plano').forEach(btn => {
         btn.addEventListener('click', () => {
-          const valor = btn.dataset.valor;
+          const valor = parseFloat(btn.dataset.valor);
           const descricao = btn.dataset.desc;
           iniciarCheckout({ valor, descricao, minutos: 120 });
         });
@@ -140,12 +166,12 @@
       const valorUrl = get("valor");
       const descUrl  = (get("descricao") || "").replace(/\+/g, " ");
       if (valorUrl && descUrl) {
-        iniciarCheckout({ valor: valorUrl, descricao: descUrl, minutos: 120 });
+        iniciarCheckout({ valor: parseFloat(valorUrl), descricao: descUrl, minutos: 120 });
       }
 
       // -------- fluxo checkout ----------
       async function iniciarCheckout({ valor, descricao, minutos }) {
-        // troca de telas
+        // troca telas
         elEscolha.style.display = 'none';
         elCheckout.style.display = 'block';
 
@@ -153,33 +179,40 @@
         document.getElementById('desc-plano').innerText =
           `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+        const setErro = (msg) => {
+          const s = document.getElementById('status');
+          s.className = 'pill err';
+          s.innerText = msg;
+        };
+
         try {
-          const res = await fetch(`${API}/api/pagamento`, {
+          // cria cobrança no novo endpoint (checkout)
+          const res  = await fetch(`${API}/api/pagamentos/checkout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ valor, descricao, ip, mac, roteador })
+            body: JSON.stringify({ valor, descricao, clienteIp: ip, clienteMac: mac })
           });
-          if (!res.ok) throw new Error("Falha ao iniciar pagamento");
-          const data = await res.json(); // { txid, pixCopiaCola, ... }
-          if (!data?.txid || !data?.pixCopiaCola) throw new Error("Resposta inválida");
-          TXID = data.txid;
+          const data = await res.json().catch(() => ({}));
+          console.log('[POST /api/pagamentos/checkout]', res.status, data);
 
-          // QR
-          document.getElementById("pix-code").innerText = data.pixCopiaCola;
-          new QRious({
-            element: document.getElementById('qrcode'),
-            value: data.pixCopiaCola,
-            size: 220,
-            background: 'white',
-            foreground: 'black'
-          });
+          if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+          const copiaECola = data?.copiaECola || data?.payloadPix || null;
+          REF = data?.externalId || null; // referência para polling
+
+          if (!REF)     return setErro('Resposta sem referência (externalId).');
+          if (!copiaECola) return setErro('Resposta sem “copia-e-cola” Pix.');
+
+          // QR + copia e cola
+          await waitForQRious();
+          document.getElementById("pix-code").innerText = copiaECola;
+          new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
 
           iniciarTimer();
           iniciarPolling();
         } catch (e) {
-          const s = document.getElementById('status');
-          s.className = 'pill err';
-          s.innerText = '❌ Não foi possível iniciar o pagamento.';
+          console.error('checkout erro:', e);
+          setErro('❌ Não foi possível iniciar o pagamento.');
         }
       }
 
@@ -188,7 +221,7 @@
         elCheckout.style.display = 'none';
         elEscolha.style.display  = 'block';
         document.getElementById('pix-code').innerText = '';
-        const ctx = document.getElementById('qrcode').getContext('2d');
+        const ctx = document.getElementById('qrcode')?.getContext('2d');
         ctx && ctx.clearRect(0,0,220,220);
         document.getElementById('status').className = 'pill info';
         document.getElementById('status').innerText = '🔄 Aguardando pagamento...';
@@ -199,27 +232,35 @@
       function limparFluxo() {
         if (pollingHandle) clearInterval(pollingHandle);
         if (timerHandle) clearInterval(timerHandle);
-        pollingHandle = null; timerHandle = null; TXID = null;
+        pollingHandle = null; timerHandle = null; REF = null;
       }
 
       function iniciarPolling() {
         pollingHandle = setInterval(async () => {
+          if (!REF) return;
           try {
-            const res = await fetch(`${API}/api/verificar-pagamento?txid=${encodeURIComponent(TXID)}`);
-            if (!res.ok) return;
-            const { status } = await res.json();
+            // Verifica status pelo novo endpoint (preferido)
+            const r = await fetch(`${API}/api/verificar-pagamento`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ externalId: REF })
+            });
+            if (!r.ok) return; // tenta novamente no próximo ciclo
+            const j = await r.json();
 
-            if (status === 'pago') {
+            const status = j?.status;
+            if (status === 'pago' || j?.pago) {
               limparFluxo();
               const s = document.getElementById('status');
               s.className = 'pill ok';
               s.innerHTML = '✅ Pagamento confirmado! Liberando acesso...';
 
+              // Libera no Mikrotik (backend trata isso)
               try {
                 await fetch(`${API}/api/liberar-acesso`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ txid: TXID, mac, ip, linkOrig })
+                  body: JSON.stringify({ externalId: REF, mac, ip, linkOrig })
                 });
               } catch {}
 
@@ -231,14 +272,16 @@
               }, 1200);
             }
 
-            if (status === 'expirado') {
+            if (status === 'expirado' || status === 'cancelado') {
               limparFluxo();
               const s = document.getElementById('status');
               s.className = 'pill err';
-              s.innerText = '⏳ Pagamento expirado. Gere um novo QR.';
+              s.innerText = status === 'expirado'
+                ? '⏳ Pagamento expirado. Gere um novo QR.'
+                : '❌ Pagamento cancelado.';
             }
-          } catch {}
-        }, 5000);
+          } catch {/* ignora erros intermitentes */}
+        }, 3000);
       }
 
       function iniciarTimer() {

@@ -1,35 +1,78 @@
-import { NextResponse } from 'next/server';
-import { RouterOSClient } from 'node-routeros';
+// src/app/api/liberar-acesso/route.js
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { liberarCliente } from "@/lib/mikrotik";
 
 export async function POST(req) {
   try {
-    const { mikrotikIp, clienteIp, tempo } = await req.json();
+    const body = await req.json().catch(() => ({}));
 
-    if (!mikrotikIp || !clienteIp || !tempo) {
-      return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
+    // aceita múltiplas formas de identificar o pagamento
+    const {
+      externalId,     // referência do PSP (preferido no fluxo novo)
+      pagamentoId,    // id interno (cuid/uuid) – opcional
+      txid,           // txid Pix – opcional
+      ip,             // pode sobrescrever IP salvo
+      mac,            // pode sobrescrever MAC salvo
+      linkOrig,       // para redirecionar o cliente depois
+    } = body || {};
+
+    if (!externalId && !pagamentoId && !txid) {
+      return NextResponse.json(
+        { error: "Informe externalId, pagamentoId ou txid." },
+        { status: 400 }
+      );
     }
 
-    const conn = new RouterOSClient({
-      host: mikrotikIp,
-      user: 'admin',         // substitua
-      password: 'senha123',  // substitua
+    // 1) localizar o pagamento pela melhor chave disponível
+    let pagamento = null;
+
+    if (externalId) {
+      pagamento = await prisma.pagamento.findUnique({ where: { externalId } });
+    }
+    if (!pagamento && pagamentoId) {
+      pagamento = await prisma.pagamento.findUnique({ where: { id: pagamentoId } });
+    }
+    if (!pagamento && txid) {
+      pagamento = await prisma.pagamento.findFirst({ where: { txid } });
+    }
+
+    if (!pagamento) {
+      return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });
+    }
+
+    // 2) se ainda não está marcado como pago, marque agora
+    if (pagamento.status !== "pago") {
+      await prisma.pagamento.update({
+        where: { id: pagamento.id },
+        data: { status: "pago" },
+      });
+      // recarrega apenas o necessário
+      pagamento = { ...pagamento, status: "pago" };
+    }
+
+    // 3) define IP/MAC finais (body tem prioridade; depois registro)
+    const ipFinal  = ip  || pagamento.clienteIp  || null;
+    const macFinal = mac || pagamento.clienteMac || null;
+
+    // 4) chama a lib do Mikrotik (address-list / PPPoE – conforme sua implementação)
+    const lib = await liberarCliente({
+      ip: ipFinal || undefined,
+      mac: macFinal || undefined,
+      comentario: `pagamento:${pagamento.id}`,
+      timeout: process.env.MKT_TIMEOUT || "4h",
     });
 
-    await conn.connect();
-
-    // Adiciona o IP com timeout automático
-    await conn.write('/ip/firewall/address-list/add', [
-      '=list=acesso-liberado',
-      `=address=${clienteIp}`,
-      `=timeout=${tempo}m`, // tempo em minutos (ex: 120m = 2h)
-      '=comment=Acesso automático com expiração'
-    ]);
-
-    await conn.close();
-
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error('Erro ao liberar acesso:', err);
-    return NextResponse.json({ error: 'Falha ao liberar acesso' }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      pagamentoId: pagamento.id,
+      externalId: pagamento.externalId,
+      status: "pago",
+      mikrotik: lib,
+      redirect: linkOrig || null,
+    });
+  } catch (e) {
+    console.error("POST /api/liberar-acesso", e);
+    return NextResponse.json({ error: "Falha ao liberar acesso" }, { status: 500 });
   }
 }

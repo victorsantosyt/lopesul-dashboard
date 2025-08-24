@@ -8,14 +8,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-
 model Operador {
-  id       String  @id @default(uuid())
-  nome     String  @unique @map("usuario")  // ← é isso que queremos
+  id       String   @id @default(uuid())
+  nome     String   @unique @map("usuario") // mantém mapeamento existente
   senha    String
-  ativo    Boolean @default(true)
+  ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("createdAt")
+
   @@map("operadores")
 }
 
@@ -30,11 +29,12 @@ model Frota {
 }
 
 model Venda {
-  id      String   @id @default(uuid())
-  frotaId String
-  valor   Float
-  data    DateTime @default(now())
-  frota   Frota    @relation(fields: [frotaId], references: [id])
+  id        String   @id @default(uuid())
+  frotaId   String
+  // ⬇️ trocado de Float para Int em centavos (evita erro de arredondamento)
+  valorCent Int
+  data      DateTime @default(now())
+  frota     Frota    @relation(fields: [frotaId], references: [id])
 
   @@index([frotaId])
   @@index([data])
@@ -47,33 +47,31 @@ model Dispositivo {
   frotaId  String
   frota    Frota    @relation(fields: [frotaId], references: [id])
 
+  // Se quiser impedir IP repetido na mesma frota, descomente:
+  // @@unique([frotaId, ip])
+
   @@index([frotaId])
   @@index([ip])
 }
 
-
-
 model Pagamento {
-  id        String        @id @default(cuid())
-  valor     Float
-  descricao String
-  chavePix  String?
-  payload   String?
-  status    String        @default("pendente")
-  plano     String
-  criadoEm  DateTime      @default(now())
-  pagoEm    DateTime?
-  expiraEm  DateTime?
-  ip        String?
-  mac       String?
-  roteador  String?
-  sessoes   SessaoAtiva[]
+  id           String        @id @default(cuid())
+  txid         String?       @unique // txid Pix (se houver)
+  externalId   String?       @unique // id/código no PSP
+  valorCent    Int
+  descricao    String?
+  status       String        @default("pendente") // pendente | pago | expirado | cancelado
+  expiracaoAt  DateTime?
+  payloadPix   String? // copia-e-cola (EMV) ou qrcode base64
+  clienteIp    String? // IP do cliente (liberação Mikrotik)
+  clienteMac   String? // opcional
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+  SessaoAtiva  SessaoAtiva[]
 
-  @@index([descricao, valor, status])
-  @@index([mac])
+  // ⬇️ índices úteis para consultas e relatórios
+  @@index([status])
   @@index([criadoEm])
-  @@index([status, pagoEm])
-  @@map("pagamentos")
 }
 
 model SessaoAtiva {
@@ -85,12 +83,12 @@ model SessaoAtiva {
   expiraEm    DateTime
   ativo       Boolean    @default(true)
   pagamentoId String?
-  pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id])
+  pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id], onDelete: SetNull)
 
   @@index([ativo])
+  @@index([pagamentoId])
   @@map("sessoes_ativas")
 }
-
 
 model Transacao {
   id        String    @id @default(cuid())
@@ -113,6 +111,7 @@ enum Status {
   EXPIRADO
   CANCELADO
 }
+
 model Config {
   key       String   @id
   value     String

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 function getNextPath() {
   if (typeof window === "undefined") return "/dashboard";
@@ -13,7 +13,9 @@ export default function LoginPage() {
   const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
 
-  
+  const senhaRef = useRef(null);
+  const formRef = useRef(null);
+
   async function onSubmit(e) {
     e.preventDefault();
     if (!usuario || !senha) {
@@ -37,9 +39,8 @@ export default function LoginPage() {
       console.error(err);
       alert("Erro de rede ao entrar.");
     } finally {
-       setLoading(false);
+      setLoading(false);
     }
-
   }
 
   useEffect(() => {
@@ -49,10 +50,14 @@ export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-transparent">
       <form
+        ref={formRef}
         onSubmit={onSubmit}
         className="w-full max-w-sm rounded-2xl bg-slate-800/90 ring-1 ring-inset ring-white/10 shadow-xl px-6 py-6 space-y-4 backdrop-blur-sm transition-colors"
       >
-        <h1 className="text-2xl font-bold">Olá Operador</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-gray-100">
+  Olá Operador
+</h1>
+
 
         <div className="space-y-1">
           <label className="text-sm text-slate-300">Usuário</label>
@@ -64,6 +69,13 @@ export default function LoginPage() {
             autoComplete="username"
             value={usuario}
             onChange={(e) => setUsuario(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                senhaRef.current?.focus();
+              }
+            }}
           />
         </div>
 
@@ -78,6 +90,13 @@ export default function LoginPage() {
             autoComplete="current-password"
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
+            ref={senhaRef}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                formRef.current?.requestSubmit?.();
+              }
+            }}
           />
         </div>
 

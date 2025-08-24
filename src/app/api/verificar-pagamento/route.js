@@ -1,65 +1,120 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-function extrairPlano(descricao = '') {
-  const d = (descricao || '').toLowerCase();
-  if (d.includes('12h')) return '12h';
-  if (d.includes('24h')) return '24h';
-  if (d.includes('48h')) return '48h';
-  return '12h';
+// Janela padrão de busca quando não há externalId/txid
+const DEFAULT_LOOKBACK_MINUTES = 120;
+
+function toCents(valor) {
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
 }
 
 export async function POST(req) {
   try {
-    const { valor, descricao, payload } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const {
+      externalId,   // preferencial
+      txid,         // alternativa
+      valor,        // fallback em reais
+      descricao,    // fallback
+      clienteIp,    // opcional p/ desambiguar no fallback
+      lookbackMin,  // opcional, padrão 120 min
+    } = body || {};
 
-    if (valor == null || !descricao) {
+    // 1) Caminho preferido: localizar por externalId
+    if (externalId) {
+      const pg = await prisma.pagamento.findUnique({
+        where: { externalId },
+        select: {
+          id: true,
+          status: true,
+          txid: true,
+          externalId: true,
+          valorCent: true,
+          descricao: true,
+          criadoEm: true,
+          atualizadoEm: true,
+        },
+      });
+      if (!pg) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
+
+      return NextResponse.json({
+        encontrado: true,
+        pagamentoId: pg.id,
+        status: pg.status,
+        pago: pg.status === 'pago',
+        externalId: pg.externalId,
+        txid: pg.txid,
+      });
+    }
+
+    // 2) Alternativa: localizar por txid
+    if (txid) {
+      const pg = await prisma.pagamento.findFirst({
+        where: { txid },
+        orderBy: { criadoEm: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          txid: true,
+          externalId: true,
+        },
+      });
+      if (!pg) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
+
+      return NextResponse.json({
+        encontrado: true,
+        pagamentoId: pg.id,
+        status: pg.status,
+        pago: pg.status === 'pago',
+        externalId: pg.externalId,
+        txid: pg.txid,
+      });
+    }
+
+    // 3) Fallback: valor + descricao (+ clienteIp), em janela recente
+    const valorCent = toCents(valor);
+    if (valorCent == null || !descricao) {
       return NextResponse.json(
-        { error: 'Valor e descrição são obrigatórios' },
+        { error: 'Informe externalId, txid, ou (valor + descricao) para verificar.' },
         { status: 400 }
       );
     }
 
-    const valorNum = Number(valor);
-    if (Number.isNaN(valorNum)) {
-      return NextResponse.json({ error: 'Valor inválido' }, { status: 400 });
-    }
+    const minutes = Number.isFinite(Number(lookbackMin)) ? Number(lookbackMin) : DEFAULT_LOOKBACK_MINUTES;
+    const from = new Date(Date.now() - minutes * 60 * 1000);
 
-    // 1) Busca como "pago"
-    const pago = await prisma.pagamento.findFirst({
-      where: { valor: valorNum, descricao, status: 'pago' },
-      orderBy: { criadoEm: 'desc' },
+    const where = {
+      valorCent,
+      descricao,
+      criadoEm: { gte: from },
+      ...(clienteIp ? { clienteIp } : {}),
+    };
+
+    const pg = await prisma.pagamento.findFirst({
+      where,
+      orderBy: [{ status: 'desc' }, { criadoEm: 'desc' }], // dá preferência a pagos; depois o mais novo
+      select: {
+        id: true,
+        status: true,
+        txid: true,
+        externalId: true,
+      },
     });
 
-    if (pago) {
-      return NextResponse.json({
-        pago: true,
-        pagamentoId: pago.id,
-        plano: pago.plano,
-      });
+    if (!pg) {
+      return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
     }
 
-    // 2) Busca como "pendente"
-    const pendente = await prisma.pagamento.findFirst({
-      where: { valor: valorNum, descricao, status: 'pendente' },
-      orderBy: { criadoEm: 'desc' },
+    return NextResponse.json({
+      encontrado: true,
+      pagamentoId: pg.id,
+      status: pg.status,
+      pago: pg.status === 'pago',
+      externalId: pg.externalId,
+      txid: pg.txid,
     });
-
-    // 3) Se não existir pendente e tiver payload → cria um
-    if (!pendente && payload) {
-      await prisma.pagamento.create({
-        data: {
-          valor: valorNum,
-          descricao,
-          chavePix: 'fsolucoes1@hotmail.com',
-          payload,
-          plano: extrairPlano(descricao),
-          status: 'pendente',
-        },
-      });
-    }
-
-    return NextResponse.json({ pago: false });
   } catch (error) {
     console.error('Erro ao verificar pagamento:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
