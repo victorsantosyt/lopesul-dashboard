@@ -38,7 +38,7 @@
     .btn-plano .preco{ display:block; font-size:20px; }
     .btn-plano .duracao{ display:block; font-size:18px; opacity:.95; }
 
-    .checkout{ max-width:420px; margin:0 auto; background:var(--card); color:#222; border-radius:20px; box-shadow:var(--sombra); padding:20px; display:none; }
+    .checkout{ max-width:520px; margin:0 auto; background:var(--card); color:#222; border-radius:20px; box-shadow:var(--sombra); padding:20px; display:none; }
     .title-ch{ color:#0a73c0; font-weight:800; font-size:22px; margin:6px 0 2px; }
     .sub-ch{ color:#334; margin-bottom:8px; }
     .qr{ display:flex; justify-content:center; margin:12px 0 }
@@ -54,6 +54,12 @@
 
     .rodape{ margin-top:26px; opacity:.9 }
     .rodape img{ height:42px; width:auto; }
+
+    /* form cliente minimalista */
+    .row{ display:flex; gap:10px; }
+    .row > * { flex:1 }
+    .inp{ width:100%; border:1px solid #dee2e6; border-radius:10px; padding:10px 12px; font-size:14px; }
+    .hint{ font-size:12px; color:#666; margin-top:6px }
   </style>
 </head>
 <body>
@@ -87,6 +93,18 @@
       <div class="title-ch">Pagamento via Pix</div>
       <div class="sub-ch" id="desc-plano"></div>
 
+      <!-- FORM do cliente (mostra apenas se faltar doc) -->
+      <div id="cliente-form" style="display:none; text-align:left; margin:12px 0 6px;">
+        <div class="row">
+          <input id="cli-nome" class="inp" placeholder="Nome completo" autocomplete="name">
+          <input id="cli-doc" class="inp" placeholder="CPF ou CNPJ (somente números)" inputmode="numeric" autocomplete="off" maxlength="18">
+        </div>
+        <div class="hint">Obrigatório para gerar o QR Code Pix.</div>
+        <button class="btn" id="btn-gerar-pix">Gerar QR Pix</button>
+        <div class="pill err" id="cli-erro" style="display:none"></div>
+        <hr style="margin:14px 0; border:none; border-top:1px solid #eee">
+      </div>
+
       <div class="qr">
         <canvas id="qrcode" width="220" height="220"></canvas>
       </div>
@@ -103,7 +121,7 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const API = ""; // mesmo domínio. Se hospedar em outro host/porta, coloque a base aqui.
+      const API = ""; // mesmo domínio
 
       // --- helpers URL/Mikrotik ---
       const get = (n) => new URLSearchParams(location.search).get(n);
@@ -111,6 +129,10 @@
       const ip = get("ip") || null;
       const roteador = get("roteador") || null;
       const linkOrig = get("link_orig") || get("link-orig") || "";
+
+      // ► cliente por URL (se vier): ?nome=Fulano&doc=00000000000
+      let nomeCli = get("nome") || get("name") || "Cliente";
+      let docCli  = get("doc")  || get("document") || "";
 
       // estados
       let REF = null; // externalId
@@ -120,6 +142,12 @@
 
       const elEscolha  = document.getElementById('view-escolha');
       const elCheckout = document.getElementById('view-checkout');
+
+      const elClienteForm = document.getElementById('cliente-form');
+      const elCliNome = document.getElementById('cli-nome');
+      const elCliDoc  = document.getElementById('cli-doc');
+      const elCliErro = document.getElementById('cli-erro');
+      const elBtnGerar = document.getElementById('btn-gerar-pix');
 
       // ==== Wait QRious ====
       function waitForQRious(){
@@ -147,7 +175,7 @@
             const ctx = document.getElementById('qrcode')?.getContext('2d');
             ctx && ctx.clearRect(0,0,220,220);
             document.getElementById("pix-code").innerText = '';
-          }, 1000);
+          }, 800);
         } catch(e) { console.error('QRious teste falhou:', e); }
       }).catch(()=>{ /* ignore */ });
 
@@ -169,52 +197,8 @@
         iniciarCheckout({ valor: parseFloat(valorUrl), descricao: descUrl, minutos: 120 });
       }
 
-      // -------- fluxo checkout ----------
-      async function iniciarCheckout({ valor, descricao, minutos }) {
-        // troca telas
-        elEscolha.style.display = 'none';
-        elCheckout.style.display = 'block';
-
-        tempoLivre = Number(minutos) || 120;
-        document.getElementById('desc-plano').innerText =
-          `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-
-        const setErro = (msg) => {
-          const s = document.getElementById('status');
-          s.className = 'pill err';
-          s.innerText = msg;
-        };
-
-        try {
-          // cria cobrança no novo endpoint (checkout)
-          const res  = await fetch(`${API}/api/pagamentos/checkout`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ valor, descricao, clienteIp: ip, clienteMac: mac })
-          });
-          const data = await res.json().catch(() => ({}));
-          console.log('[POST /api/pagamentos/checkout]', res.status, data);
-
-          if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-
-          const copiaECola = data?.copiaECola || data?.payloadPix || null;
-          REF = data?.externalId || null; // referência para polling
-
-          if (!REF)     return setErro('Resposta sem referência (externalId).');
-          if (!copiaECola) return setErro('Resposta sem “copia-e-cola” Pix.');
-
-          // QR + copia e cola
-          await waitForQRious();
-          document.getElementById("pix-code").innerText = copiaECola;
-          new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
-
-          iniciarTimer();
-          iniciarPolling();
-        } catch (e) {
-          console.error('checkout erro:', e);
-          setErro('❌ Não foi possível iniciar o pagamento.');
-        }
-      }
+      // -------- helpers ----------
+      const onlyDigits = (s) => (s || '').replace(/\D/g, '');
 
       function voltarEscolha() {
         limparFluxo();
@@ -227,6 +211,9 @@
         document.getElementById('status').innerText = '🔄 Aguardando pagamento...';
         document.getElementById('timer').className = 'pill warn';
         document.getElementById('timer').innerText = '⏰ Tempo livre: 2:00';
+        // reseta form
+        elCliErro.style.display = 'none';
+        elCliErro.innerText = '';
       }
 
       function limparFluxo() {
@@ -235,19 +222,32 @@
         pollingHandle = null; timerHandle = null; REF = null;
       }
 
+      function iniciarTimer() {
+        const el = document.getElementById('timer');
+        const fmt = (t) => `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+        el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+        timerHandle = setInterval(() => {
+          tempoLivre = Math.max(tempoLivre-1, 0);
+          el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+          if (tempoLivre === 0) {
+            clearInterval(timerHandle);
+            el.className = 'pill err';
+            el.innerText = '⏰ Tempo esgotado! Faça o pagamento para continuar.';
+          }
+        }, 1000);
+      }
+
       function iniciarPolling() {
         pollingHandle = setInterval(async () => {
           if (!REF) return;
           try {
-            // Verifica status pelo novo endpoint (preferido)
             const r = await fetch(`${API}/api/verificar-pagamento`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ externalId: REF })
             });
-            if (!r.ok) return; // tenta novamente no próximo ciclo
+            if (!r.ok) return;
             const j = await r.json();
-
             const status = j?.status;
             if (status === 'pago' || j?.pago) {
               limparFluxo();
@@ -255,7 +255,6 @@
               s.className = 'pill ok';
               s.innerHTML = '✅ Pagamento confirmado! Liberando acesso...';
 
-              // Libera no Mikrotik (backend trata isso)
               try {
                 await fetch(`${API}/api/liberar-acesso`, {
                   method: "POST",
@@ -284,19 +283,89 @@
         }, 3000);
       }
 
-      function iniciarTimer() {
-        const el = document.getElementById('timer');
-        const fmt = (t) => `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
-        el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
-        timerHandle = setInterval(() => {
-          tempoLivre = Math.max(tempoLivre-1, 0);
-          el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
-          if (tempoLivre === 0) {
-            clearInterval(timerHandle);
-            el.className = 'pill err';
-            el.innerText = '⏰ Tempo esgotado! Faça o pagamento para continuar.';
+      // -------- fluxo checkout ----------
+      async function iniciarCheckout({ valor, descricao, minutos }) {
+        // troca telas
+        elEscolha.style.display = 'none';
+        elCheckout.style.display = 'block';
+
+        tempoLivre = Number(minutos) || 120;
+        document.getElementById('desc-plano').innerText =
+          `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+        const setErro = (msg) => {
+          const s = document.getElementById('status');
+          s.className = 'pill err';
+          s.innerText = msg;
+        };
+
+        // se faltar DOC, mostra form para coletar e só depois gera o QR
+        if (!onlyDigits(docCli)) {
+          elClienteForm.style.display = 'block';
+          elCliNome.value = nomeCli || '';
+          elCliDoc.value  = docCli  || '';
+
+          elBtnGerar.onclick = async () => {
+            elCliErro.style.display = 'none';
+            elCliErro.innerText = '';
+            const n  = (elCliNome.value || '').trim() || 'Cliente';
+            const d0 = onlyDigits(elCliDoc.value);
+            if (!d0 || (d0.length !== 11 && d0.length !== 14)) {
+              elCliErro.style.display = 'block';
+              elCliErro.innerText = 'Informe CPF (11 dígitos) ou CNPJ (14 dígitos).';
+              return;
+            }
+            nomeCli = n;
+            docCli  = d0;
+            elClienteForm.style.display = 'none';
+            await gerarPix({ valor, descricao, setErro });
+          };
+          return; // espera o clique do usuário
+        }
+
+        // se já tem DOC vindo por URL, gera direto
+        await gerarPix({ valor, descricao, setErro });
+      }
+
+      async function gerarPix({ valor, descricao, setErro }) {
+        try {
+          // cria cobrança no endpoint (checkout)
+          const res  = await fetch(`${API}/api/pagamentos/checkout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              valor,
+              descricao,
+              clienteIp: ip,
+              clienteMac: mac,
+              customer: { name: nomeCli, document: docCli }
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          console.log('[POST /api/pagamentos/checkout]', res.status, data);
+
+          if (!res.ok) {
+            const msg = data?.error || `HTTP ${res.status}`;
+            return setErro('❌ ' + msg);
           }
-        }, 1000);
+
+          const copiaECola = data?.copiaECola || data?.payloadPix || null;
+          REF = data?.externalId || null;
+
+          if (!REF)        return setErro('Resposta sem referência (externalId).');
+          if (!copiaECola) return setErro('Resposta sem “copia-e-cola” Pix.');
+
+          // QR + copia e cola
+          await waitForQRious();
+          document.getElementById("pix-code").innerText = copiaECola;
+          new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
+
+          iniciarTimer();
+          iniciarPolling();
+        } catch (e) {
+          console.error('checkout erro:', e);
+          setErro('❌ Não foi possível iniciar o pagamento.');
+        }
       }
 
       window.copiarPix = function() {

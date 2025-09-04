@@ -1,141 +1,135 @@
 // src/lib/mikrotik.js
-import { RouterOSClient } from "node-routeros";
+import { RouterOSClient } from 'routeros-client';
+
+const HOST = process.env.MIKROTIK_HOST || '192.168.88.1';
+const USER = process.env.MIKROTIK_USER || 'admin';
+const PASS = process.env.MIKROTIK_PASS || '';
+const PORT = Number(process.env.MIKROTIK_PORT || 8728);
+const SSL  = String(process.env.MIKROTIK_SSL || 'false').toLowerCase() === 'true';
+const TIMEOUT_MS = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
+const PAID_LIST  = process.env.MIKROTIK_PAID_LIST || 'paid_clients';
 
 /**
- * ENV necessários:
- *  - MKT_HOST, MKT_USER, MKT_PASS
- * Opcionais:
- *  - MKT_PORT=8728, MKT_SSL=false
- *  - MKT_LIST=paid_clients
- *  - MKT_TIMEOUT=4h
+ * Cria cliente RouterOS com timeout + auto close
  */
-
-function getClient() {
-  const host = process.env.MKT_HOST;
-  const user = process.env.MKT_USER;
-  const pass = process.env.MKT_PASS;
-  const port = Number(process.env.MKT_PORT || 8728);
-  const useTLS = String(process.env.MKT_SSL || "false").toLowerCase() === "true";
-
-  if (!host || !user || !pass) {
-    throw new Error("Mikrotik env vars ausentes (MKT_HOST, MKT_USER, MKT_PASS).");
-  }
-
+function createClient() {
   return new RouterOSClient({
-    host,
-    user,
-    password: pass,
-    port,
-    tls: useTLS,
-    timeout: 7000,
+    host: HOST,
+    user: USER,
+    password: PASS,
+    port: PORT,
+    ssl: SSL,
+    timeout: TIMEOUT_MS,
+    // Opcional: ignore TLS self-signed
+    // rejectUnauthorized: false,
   });
 }
 
-const LIST_NAME = (process.env.MKT_LIST || "paid_clients").trim();
-
-/** Remove entradas antigas de um IP em uma address-list */
-async function removeExisting(conn, list, ip) {
-  if (!ip) return;
-  const existentes = await conn.write("/ip/firewall/address-list/print", {
-    ".proplist": ".id",
-    list,
-    address: ip,
-  });
-  for (const e of existentes || []) {
-    if (e[".id"]) {
-      await conn.write("/ip/firewall/address-list/remove", { ".id": e[".id"] });
-    }
+/**
+ * Executa um bloco com cliente conectado e garante fechamento
+ */
+async function withClient(fn) {
+  const client = createClient();
+  try {
+    await client.connect();
+    return await fn(client);
+  } finally {
+    try { await client.close(); } catch { /* ignore */ }
   }
 }
 
-/** Tenta descobrir o IP por MAC usando ARP / Hotspot / PPP Active */
-async function resolveIpByMac(conn, macRaw) {
-  if (!macRaw) return null;
-  const mac = String(macRaw).toLowerCase();
-
-  // 1) ARP
-  try {
-    const arp = await conn.write("/ip/arp/print", { "where": [`mac-address=${mac}`] });
-    const ip = arp?.[0]?.address;
-    if (ip) return ip;
-  } catch {}
-
-  // 2) Hotspot active
-  try {
-    const hs = await conn.write("/ip/hotspot/active/print", { "where": [`mac-address=${mac}`] });
-    const ip = hs?.[0]?.address;
-    if (ip) return ip;
-  } catch {}
-
-  // 3) PPP active
-  try {
-    const ppp = await conn.write("/ppp/active/print");
-    const hit = (ppp || []).find((x) => (x["caller-id"] || "").toLowerCase() === mac);
-    if (hit?.address) return hit.address;
-  } catch {}
-
+/**
+ * Busca item na address-list por address e list (retorna ID do item ou null)
+ */
+async function findAddressListId(client, { address, list }) {
+  const res = await client.menu('/ip/firewall/address-list').print({
+    where: [
+      ['address', '=', address],
+      ['list', '=', list],
+    ],
+  });
+  // routeros-client retorna array de objetos com .id (por exemplo '*2')
+  if (Array.isArray(res) && res.length > 0) {
+    return res[0]['.id'] || res[0].id || null;
+  }
   return null;
 }
 
 /**
- * Adiciona o cliente na address-list com timeout (ex.: "30m", "4h", "1d").
- * - Se não vier IP mas vier MAC, tenta resolver IP no roteador.
+ * Adiciona (se não existir) à address-list
  */
-export async function liberarCliente({ ip, mac, comentario, timeout }) {
-  const api = getClient();
-  let conn;
-  try {
-    conn = await api.connect();
+async function addToAddressList(client, { list, address, comment }) {
+  const id = await findAddressListId(client, { address, list });
+  if (id) return { id, created: false }; // já existe (idempotente)
 
-    let finalIp = ip;
-    if (!finalIp && mac) {
-      finalIp = await resolveIpByMac(conn, mac);
-    }
-    if (!finalIp) {
-      return { ok: false, skipped: true, reason: "Sem IP. Não foi possível resolver por MAC." };
-    }
+  const payload = { list, address };
+  if (comment) payload.comment = comment;
 
-    // Remove entradas antigas para o mesmo IP
-    await removeExisting(conn, LIST_NAME, finalIp);
-
-    const comment =
-      (comentario || (mac ? `mac:${mac}` : "liberado")).toString().slice(0, 120);
-
-    const res = await conn.write("/ip/firewall/address-list/add", {
-      list: LIST_NAME,
-      address: finalIp,
-      comment,
-      ...(timeout ? { timeout } : (process.env.MKT_TIMEOUT ? { timeout: process.env.MKT_TIMEOUT } : {})),
-    });
-
-    return { ok: true, added: { ip: finalIp, list: LIST_NAME, timeout: timeout || process.env.MKT_TIMEOUT || null }, raw: res };
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
-  } finally {
-    try { await conn?.close(); } catch {}
-  }
+  const res = await client.menu('/ip/firewall/address-list').add(payload);
+  const newId = res?.['ret'] || res?.id || null; // depende da versão
+  return { id: newId, created: true };
 }
 
-/** Remove imediatamente o IP da address-list */
-export async function revogarCliente({ ip, mac }) {
-  const api = getClient();
-  let conn;
-  try {
-    conn = await api.connect();
+/**
+ * Remove (se existir) da address-list
+ */
+async function removeFromAddressList(client, { list, address }) {
+  const id = await findAddressListId(client, { address, list });
+  if (!id) return { removed: false, reason: 'not_found' };
 
-    let finalIp = ip;
-    if (!finalIp && mac) {
-      finalIp = await resolveIpByMac(conn, mac);
-    }
-    if (!finalIp) {
-      return { ok: false, skipped: true, reason: "Sem IP. Não foi possível resolver por MAC." };
-    }
+  await client.menu('/ip/firewall/address-list').remove({ id });
+  return { removed: true };
+}
 
-    await removeExisting(conn, LIST_NAME, finalIp);
-    return { ok: true, removed: finalIp, list: LIST_NAME };
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
-  } finally {
-    try { await conn?.close(); } catch {}
-  }
+/**
+ * Verifica se já está presente na lista
+ */
+export async function estaPago({ ip, list = PAID_LIST }) {
+  if (!ip) throw new Error('IP é obrigatório');
+  return withClient(async (client) => {
+    const id = await findAddressListId(client, { address: ip, list });
+    return Boolean(id);
+  });
+}
+
+/**
+ * Libera acesso: adiciona IP em address-list "paid_clients".
+ * Idempotente: não duplica se já existir.
+ * @param {object} args
+ * @param {string} args.ip         IP do cliente (ex.: '10.0.0.55')
+ * @param {string} [args.busId]    Opcional: frota/ônibus para comentar log
+ * @param {string} [args.list]     Nome da address-list (default: PAID_LIST)
+ * @param {string} [args.comment]  Comentário customizado
+ */
+export async function liberarAcesso({ ip, busId, list = PAID_LIST, comment }) {
+  if (!ip) throw new Error('IP é obrigatório');
+  const cmt = comment || (busId ? `pago via Pix - ${busId}` : 'pago via Pix');
+
+  return withClient(async (client) => {
+    const out = await addToAddressList(client, { list, address: ip, comment: cmt });
+    return { ok: true, list, ip, ...out };
+  });
+}
+
+/**
+ * Revoga acesso: remove IP da address-list "paid_clients".
+ */
+export async function revogarAcesso({ ip, list = PAID_LIST }) {
+  if (!ip) throw new Error('IP é obrigatório');
+
+  return withClient(async (client) => {
+    const out = await removeFromAddressList(client, { list, address: ip });
+    return { ok: out.removed, removed: out.removed, list, ip, reason: out.reason || null };
+  });
+}
+
+/**
+ * (Opcional) Pinga o roteador pela API para health-check
+ */
+export async function pingRouter() {
+  return withClient(async (client) => {
+    // /ping 1.1.1.1 count=1 → apenas um teste rápido
+    const res = await client.menu('/ping').once({ address: '1.1.1.1', count: 1 });
+    return { ok: true, res };
+  });
 }

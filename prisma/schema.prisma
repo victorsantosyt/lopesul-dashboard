@@ -31,89 +31,125 @@ model Frota {
 model Venda {
   id        String   @id @default(uuid())
   frotaId   String
-  // ⬇️ trocado de Float para Int em centavos (evita erro de arredondamento)
   valorCent Int
   data      DateTime @default(now())
-  frota     Frota    @relation(fields: [frotaId], references: [id])
+  frota     Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@index([frotaId])
-  @@index([data])
+  // consultas por frota ordenadas por data
+  @@index([frotaId, data])
 }
 
 model Dispositivo {
-  id       String   @id @default(uuid())
-  ip       String
-  criadoEm DateTime @default(now()) @map("createdAt")
-  frotaId  String
-  frota    Frota    @relation(fields: [frotaId], references: [id])
+  id           String   @id @default(uuid())
+  ip           String   @db.Inet // valida IPv4/IPv6 no Postgres
+  criadoEm     DateTime @default(now()) @map("createdAt")
+  atualizadoEm DateTime @updatedAt
+  frotaId      String
+  frota        Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  // Se quiser impedir IP repetido na mesma frota, descomente:
-  // @@unique([frotaId, ip])
-
-  @@index([frotaId])
+  // impede IP duplicado dentro da MESMA frota
+  @@unique([frotaId, ip])
   @@index([ip])
 }
 
-model Pagamento {
-  id           String        @id @default(cuid())
-  txid         String?       @unique // txid Pix (se houver)
-  externalId   String?       @unique // id/código no PSP
-  valorCent    Int
-  descricao    String?
-  status       String        @default("pendente") // pendente | pago | expirado | cancelado
-  expiracaoAt  DateTime?
-  payloadPix   String? // copia-e-cola (EMV) ou qrcode base64
-  clienteIp    String? // IP do cliente (liberação Mikrotik)
-  clienteMac   String? // opcional
-  criadoEm     DateTime      @default(now())
-  atualizadoEm DateTime      @updatedAt
-  SessaoAtiva  SessaoAtiva[]
-
-  // ⬇️ índices úteis para consultas e relatórios
-  @@index([status])
-  @@index([criadoEm])
-}
-
 model SessaoAtiva {
-  id          String     @id @default(cuid())
-  ipCliente   String     @unique
-  macCliente  String?
-  plano       String
-  inicioEm    DateTime   @default(now())
-  expiraEm    DateTime
-  ativo       Boolean    @default(true)
-  pagamentoId String?
-  pagamento   Pagamento? @relation(fields: [pagamentoId], references: [id], onDelete: SetNull)
+  id         String   @id @default(cuid())
+  ipCliente  String   @unique
+  macCliente String?
+  plano      String
+  inicioEm   DateTime @default(now())
+  expiraEm   DateTime
+  ativo      Boolean  @default(true)
+
+  // relacionamento agora é com Pedido
+  pedidoId String?
+  pedido   Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
 
   @@index([ativo])
-  @@index([pagamentoId])
+  @@index([pedidoId])
   @@map("sessoes_ativas")
-}
-
-model Transacao {
-  id        String    @id @default(cuid())
-  txid      String    @unique
-  valor     Decimal   @db.Decimal(10, 2)
-  descricao String
-  status    Status    @default(PENDENTE)
-  mac       String?
-  ip        String?
-  minutos   Int?      @default(120)
-  linkOrig  String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  paidAt    DateTime?
-}
-
-enum Status {
-  PENDENTE
-  PAGO
-  EXPIRADO
-  CANCELADO
 }
 
 model Config {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+//
+// 🔥 Modelos para integração Pagar.me
+//
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  EXPIRED
+}
+
+enum PaymentMethod {
+  PIX
+  CARD
+  BOLETO
+}
+
+enum ChargeStatus {
+  CREATED
+  AUTHORIZED
+  PAID
+  REFUNDED
+  FAILED
+  CANCELED
+}
+
+model Pedido {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  amount        Int
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  description   String?
+  deviceMac     String?
+  ip            String?       @db.Inet // consistente com Dispositivo/ip
+  busId         String?
+  customerName  String?
+  customerEmail String?
+  customerDoc   String?
+  metadata      Json?
+  charges       Charge[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  SessaoAtiva   SessaoAtiva[]
+
+  @@index([status, createdAt])
+  @@index([method, createdAt])
+}
+
+model Charge {
+  id         String        @id @default(cuid())
+  pedidoId   String
+  pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  providerId String? // id da charge no Pagar.me
+  status     ChargeStatus  @default(CREATED)
+  method     PaymentMethod
+  qrCode     String? // Pix copia-e-cola
+  qrCodeUrl  String? // Pix imagem
+  raw        Json?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([pedidoId])
+  @@index([status, createdAt])
+  @@index([providerId])
+}
+
+model WebhookLog {
+  id        String   @id @default(cuid())
+  event     String?
+  orderCode String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([event])
 }

@@ -58,24 +58,24 @@ export async function GET(req) {
 
     const dias = rangeDays(start, end);
 
-    // Coletas em paralelo (tolerantes se alguma tabela não existir)
+    // Coletas em paralelo
     const [
       frotas,
       dispositivosCount,
       operadoresCount,
       sessoesAtivasCount,
 
-      vendasPeriodo,                    // vendas no período
-      pagamentosPeriodoPago,            // pagamentos pagos no período (pelo updatedAt)
-      vendasPorFrotaPeriodoAgg,         // soma de vendas por frota no período
+      vendasPeriodo,                    // Vendas no período (valor em centavos)
+      pedidosPagoPeriodo,               // Pedidos pagos no período (considera updatedAt)
+      vendasPorFrotaPeriodoAgg,         // Soma de vendas por frota no período
 
-      vendasAggPeriodo,                 // agregados de vendas (período)
-      pagosCentAggPeriodo,              // soma em centavos de pagamentos pagos (período)
+      vendasAggPeriodo,                 // Agregado de vendas (período)
+      pedidosPagoAggPeriodo,            // Soma de pedidos pagos (período)
       qtdPagos,
       qtdPendentes,
       qtdExpirados,
     ] = await Promise.all([
-      // frotas + count dispositivos (inventário, não filtra por período)
+      // Frotas + count dispositivos (inventário, não filtra por período)
       prisma.frota.findMany({
         orderBy: { criadoEm: 'desc' },
         include: { _count: { select: { dispositivos: true } } },
@@ -85,88 +85,95 @@ export async function GET(req) {
       prisma.operador.count().catch(() => 0),
       prisma.sessaoAtiva.count({ where: { ativo: true } }).catch(() => 0),
 
+      // Vendas (usar campos reais: data, valorCent)
       prisma.venda.findMany({
         where: { data: { gte: start, lte: end } },
-        select: { data: true, valor: true, frotaId: true },
+        select: { data: true, valorCent: true, frotaId: true },
       }).catch(() => []),
 
-      // consideramos "momento do pagamento" como atualizadoEm quando status virou 'pago'
-      prisma.pagamento.findMany({
-        where: { status: 'pago', atualizadoEm: { gte: start, lte: end } },
-        select: { atualizadoEm: true, valorCent: true },
+      // Pedidos pagos (usar Pedido/PaymentStatus=PAID, updatedAt)
+      prisma.pedido.findMany({
+        where: { status: 'PAID', updatedAt: { gte: start, lte: end } },
+        select: { updatedAt: true, amount: true },
       }).catch(() => []),
 
+      // Soma de vendas por frota (valorCent)
       prisma.venda.groupBy({
         by: ['frotaId'],
         where: { data: { gte: start, lte: end } },
-        _sum: { valor: true },
+        _sum: { valorCent: true },
       }).catch(() => []),
 
+      // Agregados
       prisma.venda.aggregate({
-        _sum: { valor: true },
+        _sum: { valorCent: true },
         _count: { _all: true },
         where: { data: { gte: start, lte: end } },
-      }).catch(() => ({ _sum: { valor: 0 }, _count: { _all: 0 } })),
+      }).catch(() => ({ _sum: { valorCent: 0 }, _count: { _all: 0 } })),
 
-      prisma.pagamento.aggregate({
-        _sum: { valorCent: true },
-        where: { status: 'pago', atualizadoEm: { gte: start, lte: end } },
-      }).catch(() => ({ _sum: { valorCent: 0 } })),
+      prisma.pedido.aggregate({
+        _sum: { amount: true },
+        where: { status: 'PAID', updatedAt: { gte: start, lte: end } },
+      }).catch(() => ({ _sum: { amount: 0 } })),
 
-      prisma.pagamento.count({
-        where: { status: 'pago', atualizadoEm: { gte: start, lte: end } },
+      prisma.pedido.count({
+        where: { status: 'PAID', updatedAt: { gte: start, lte: end } },
       }).catch(() => 0),
 
-      prisma.pagamento.count({
-        where: { status: 'pendente', criadoEm: { gte: start, lte: end } },
+      prisma.pedido.count({
+        where: { status: 'PENDING', createdAt: { gte: start, lte: end } },
       }).catch(() => 0),
 
-      prisma.pagamento.count({
-        where: { status: 'expirado', criadoEm: { gte: start, lte: end } },
+      prisma.pedido.count({
+        where: { status: 'EXPIRED', createdAt: { gte: start, lte: end } },
       }).catch(() => 0),
     ]);
 
-    // Séries diárias
+    // Séries diárias — Vendas (converter centavos -> reais)
     const vendasMap = new Map(dias.map(k => [k, 0]));
     for (const v of vendasPeriodo) {
       const k = ymd(new Date(v.data));
-      vendasMap.set(k, toNumber(vendasMap.get(k)) + toNumber(v.valor));
+      vendasMap.set(k, toNumber(vendasMap.get(k)) + toNumber(v.valorCent) / 100);
     }
     const vendasPorDia = dias.map(k => ({ dia: k, vendas: vendasMap.get(k) || 0 }));
 
+    // Séries diárias — Pagamentos (Pedidos pagos) (amount em centavos -> reais)
     const pagosMap = new Map(dias.map(k => [k, 0]));
-    for (const p of pagamentosPeriodoPago) {
-      const k = ymd(new Date(p.atualizadoEm));
-      pagosMap.set(k, toNumber(pagosMap.get(k)) + toNumber(p.valorCent) / 100);
+    for (const p of pedidosPagoPeriodo) {
+      const k = ymd(new Date(p.updatedAt));
+      pagosMap.set(k, toNumber(pagosMap.get(k)) + toNumber(p.amount) / 100);
     }
     const pagamentosPorDia = dias.map(k => ({ dia: k, pagos: pagosMap.get(k) || 0 }));
 
     // Faturamento por frota (no período, usando Vendas)
     const somaPorFrota = new Map(
-      vendasPorFrotaPeriodoAgg.map(v => [v.frotaId, toNumber(v._sum.valor)])
+      (vendasPorFrotaPeriodoAgg || []).map(v => [v.frotaId, toNumber(v._sum?.valorCent) / 100])
     );
     const porFrota = (frotas || [])
       .map(f => ({
         id: f.id,
         nome: f.nome ?? `Frota ${f.id.slice(0, 4)}`,
-        valor: somaPorFrota.get(f.id) || 0,
+        valor: somaPorFrota.get(f.id) || 0, // em reais
         dispositivos: f._count?.dispositivos || 0,
         status: (f._count?.dispositivos || 0) > 0 ? 'desconhecido' : 'offline',
       }))
       .sort((a, b) => b.valor - a.valor);
 
+    const totalVendasReais = toNumber(vendasAggPeriodo._sum?.valorCent) / 100;
+    const totalPagosReais  = toNumber(pedidosPagoAggPeriodo._sum?.amount) / 100;
+
     const resposta = {
       periodo: { from: ymd(start), to: ymd(end), days: dias.length },
       resumo: {
-        totalVendas: toNumber(vendasAggPeriodo._sum.valor),
-        qtdVendas: vendasAggPeriodo._count._all,
+        totalVendas: totalVendasReais,
+        qtdVendas: vendasAggPeriodo._count?._all || 0,
 
-        totalPagos: toNumber(pagosCentAggPeriodo._sum.valorCent) / 100,
+        totalPagos: totalPagosReais,
         qtdPagos,
         qtdPendentes,
         qtdExpirados,
 
-        frotasCount: frotas.length || 0,
+        frotasCount: frotas?.length || 0,
         dispositivosCount,
         operadoresCount,
         sessoesAtivasCount,

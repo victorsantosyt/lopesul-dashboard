@@ -1,49 +1,45 @@
-export async function criarCobrancaPix({ valorCent, descricao, txRef, expiresInSec = 900 }) {
-  const base = process.env.PAGARME_BASE_URL;
-  const key  = process.env.PAGARME_API_KEY;
+// src/lib/pagarme.js
+const BASE = (process.env.PAGARME_BASE_URL || 'https://api.pagar.me/core/v5').trim();
+const KEY  = (process.env.PAGARME_SECRET_KEY || '').trim();
 
-  // Exemplo genérico: ajuste o body conforme a API do Pagar.me para Pix
-  const body = {
-    amount: valorCent,              // em centavos
-    description: descricao,
-    payment_method: "pix",
-    pix: {
-      expires_in: expiresInSec,
-      // opcional: payer info
-    },
-    reference_key: txRef            // sua referência interna
-  };
+function authHeader() {
+  return 'Basic ' + Buffer.from(`${KEY}:`).toString('base64');
+}
 
-  const res = await fetch(`${base}/vX/payments`, {  // <-- troque /vX pelo path oficial que você usar
-    method: "POST",
+async function coreFetch(path, { method = 'GET', headers = {}, body } = {}) {
+  const url = path.startsWith('http') ? path : `${BASE}${path}`;
+  const res = await fetch(url, {
+    method,
     headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${key}`
+      Authorization: authHeader(),
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...headers,
     },
-    body: JSON.stringify(body)
+    body: body ? JSON.stringify(body) : undefined,
   });
 
+  const text = await res.text();
+  const isJson = (res.headers.get('content-type') || '').includes('application/json');
+  const data = isJson && text ? JSON.parse(text) : text;
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Pagar.me criar cobrança falhou: ${res.status} - ${text}`);
+    // log controlado para debug
+    console.error(`[pagarme] ${method} ${url} -> ${res.status}`, data);
+    const err = new Error(`Pagar.me ${method} ${path} ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
-
-  const json = await res.json();
-
-  // Mapeia campos relevantes (ajuste as chaves conforme resposta real do Pagar.me)
-  return {
-    externalId: json.id,                          // id da cobrança no Pagar.me
-    txid: json?.pix?.qr_code_id || json?.txid,    // conforme o retorno
-    copiaECola: json?.pix?.qr_code || json?.pix_copia_e_cola,
-    qrcodeBase64: json?.pix?.qr_code_base64,      // se retornar
-    expiresAt: json?.pix?.expires_at ? new Date(json.pix.expires_at) : null,
-  };
+  return data;
 }
 
-export function validarAssinaturaWebhook(req) {
-  // Ex.: algumas integrações enviam HMAC no header.
-  // Leia o header (ex: 'x-hub-signature' ou 'x-pagarme-signature') e valide com PAGARME_WEBHOOK_SECRET.
-  // Deixe como stub para você plugar de acordo com a doc da versão escolhida:
-  // return verifyHmac(rawBody, signature, process.env.PAGARME_WEBHOOK_SECRET)
-  return true; // provisório se o ambiente de sandbox não exigir assinatura
+export const pagarmeGET  = (path)         => coreFetch(path, { method: 'GET' });
+export const pagarmePOST = (path, body)   => coreFetch(path, { method: 'POST', body });
+
+// helpers de debug
+export function __pagarmeDebugMask() {
+  if (!KEY) return '(vazio)';
+  return KEY.slice(0, 4) + '...' + KEY.slice(-4);
 }
+export const __pagarmeBase = BASE;

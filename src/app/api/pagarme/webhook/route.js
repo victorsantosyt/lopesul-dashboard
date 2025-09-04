@@ -1,87 +1,178 @@
+// src/app/api/pagarme/webhook/route.js
 import { NextResponse } from 'next/server';
+import { pagarmeGET } from '@/lib/pagarme';
 import prisma from '@/lib/prisma';
-import { getProvider } from '@/lib/psp';
-import { liberarClienteNoMikrotik } from '@/lib/mikrotik-actions';
+import { mapChargeStatusToEnum, mapOrderStatusToPaymentEnum } from '@/lib/payments-map';
+// import { liberarAcesso } from '@/lib/mikrotik'; // quando quiser liberar de fato
 
-// Opcional: se você for validar HMAC em breve, descomente a captura do rawBody e passe para o adapter
-export async function POST(req) {
+function validaAssinaturaOpcional() {
+  // implemente HMAC quando configurar no dashboard
+  return true;
+}
+
+async function logWebhook({ event, orderCode, payload }) {
   try {
-    // --- Validação de assinatura (deixa pronto p/ futuro) ---
-    // const raw = Buffer.from(await req.arrayBuffer());
-    // const ok = getProvider().validarAssinaturaWebhook({ raw, headers: req.headers });
-    // if (!ok) return NextResponse.json({ error: 'assinatura inválida' }, { status: 401 });
-
-    // --- Payload ---
-    const evento = await req.json().catch(() => null);
-    if (!evento) return NextResponse.json({ error: 'payload inválido' }, { status: 400 });
-
-    const { externalId, status } = getProvider().normalizarEventoWebhook(evento);
-    if (!externalId) {
-      // Webhooks podem chegar com eventos que não te interessam; 200 evita reentrega em loop
-      return NextResponse.json({ ok: true });
-    }
-
-    // --- Busca pagamento por externalId (chave do PSP)
-    const pagamento = await prisma.pagamento.findUnique({
-      where: { externalId }, // externalId é @unique no schema
-      select: {
-        id: true,
-        status: true,
-        clienteIp: true,
-        clienteMac: true,
-      },
+    await prisma.webhookLog.create({
+      data: { event, orderCode: orderCode || null, payload },
     });
+  } catch { /* evita quebrar fluxo por log */ }
+}
 
-    if (!pagamento) {
-      // Pode acontecer de webhook chegar antes do create (latência); responda 200 e logue.
-      console.warn('[webhook] pagamento não encontrado para externalId:', externalId);
-      return NextResponse.json({ ok: true });
+async function onPaid({ orderId, chargeId, metadata = {} }) {
+  // Atualiza Pedido e Charge idempotente
+  await prisma.$transaction(async (tx) => {
+    // Pedido por code=orderId
+    const pedido = await tx.pedido.findUnique({ where: { code: orderId } });
+
+    if (pedido && pedido.status !== 'PAID') {
+      await tx.pedido.update({
+        where: { id: pedido.id },
+        data: { status: 'PAID' },
+      });
     }
 
-    // --- Normaliza status vindo do PSP para o nosso domínio
-    const s = String(status || '').toLowerCase();
-    let novoStatus = null;
-
-    if (s.includes('paid') || s === 'pago' || s === 'approved') novoStatus = 'pago';
-    else if (s.includes('expired') || s === 'expirado') novoStatus = 'expirado';
-    else if (s.includes('canceled') || s === 'cancelado' || s === 'refused') novoStatus = 'cancelado';
-
-    if (!novoStatus) {
-      // Evento não muda estado relevante → nada a fazer
-      return NextResponse.json({ ok: true });
-    }
-
-    // --- Idempotência: se já está no estado final, não repita efeitos colaterais
-    if (pagamento.status === novoStatus) {
-      return NextResponse.json({ ok: true });
-    }
-
-    // --- Atualiza status
-    await prisma.pagamento.update({
-      where: { id: pagamento.id },
-      data: {
-        status: novoStatus,
-        // Se você adicionar paidAt no schema, já deixa pronto:
-        // ...(novoStatus === 'pago' ? { paidAt: new Date() } : {}),
-      },
-    });
-
-    // --- Efeito colateral somente quando for "pago"
-    if (novoStatus === 'pago') {
-      try {
-        await liberarClienteNoMikrotik({
-          ip: pagamento.clienteIp || undefined,
-          mac: pagamento.clienteMac || undefined,
+    if (chargeId) {
+      const ch = await tx.charge.findFirst({ where: { providerId: chargeId } });
+      if (ch && ch.status !== 'PAID') {
+        await tx.charge.update({
+          where: { id: ch.id },
+          data: { status: 'PAID' },
         });
-      } catch (e) {
-        // Não falhe o webhook por causa do Mikrotik; logue para retry manual
-        console.error('[webhook] erro ao liberar Mikrotik:', e);
       }
     }
+  });
 
-    return NextResponse.json({ ok: true });
+  // Libera no Mikrotik (se quiser agora)
+  const { deviceIp, busId } = metadata || {};
+if (deviceIp) {
+  try {
+    await liberarAcesso({ ip: deviceIp, busId });
   } catch (e) {
-    console.error('[webhook] erro inesperado:', e);
-    return NextResponse.json({ error: 'Erro no webhook' }, { status: 500 });
+    // logue erro mas não quebre o webhook
+    console.error('Erro ao liberar no Mikrotik:', e?.message || e);
+  }
+}
+
+  // (Opcional) criar/atualizar SessaoAtiva vinculada ao Pedido:
+  // - procura pelo Pedido via code=orderId
+  const pedido = await prisma.pedido.findUnique({ where: { code: orderId } });
+  if (pedido?.ip) {
+    // upsert por ipCliente
+    await prisma.sessaoAtiva.upsert({
+      where: { ipCliente: pedido.ip },
+      create: {
+        ipCliente: pedido.ip,
+        macCliente: pedido.deviceMac || null,
+        plano: (metadata?.plano || 'PIX'),
+        inicioEm: new Date(),
+        expiraEm: new Date(Date.now() + 2 * 60 * 60 * 1000), // exemplo: +2h
+        ativo: true,
+        pedidoId: pedido.id,
+      },
+      update: {
+        ativo: true,
+        expiraEm: new Date(Date.now() + 2 * 60 * 60 * 1000),
+        pedidoId: pedido.id,
+      },
+    });
+  }
+}
+
+export async function POST(req) {
+  const raw = await req.text();
+  if (!validaAssinaturaOpcional(req, raw)) {
+    return NextResponse.json({ error: 'assinatura inválida' }, { status: 401 });
+  }
+
+  try {
+    const evt = JSON.parse(raw || '{}');
+    const type = evt?.type || evt?.event || '';
+    const data = evt?.data || {};
+
+    // charge.paid
+    if (type === 'charge.paid') {
+      const chargeId = data?.id || null;
+      const orderId  = data?.order_id || data?.order?.id || null;
+
+      // Busca pedido completo para pegar metadata e status
+      let order = null; let metadata = {};
+      if (orderId) {
+        try {
+          order = await pagarmeGET(`/orders/${orderId}`);
+          metadata = order?.metadata || {};
+        } catch {}
+      }
+
+      // Atualiza DB com os status atuais do Pagar.me (idempotente)
+      if (order) {
+        const orderStatusEnum  = mapOrderStatusToPaymentEnum(order?.status);
+        const chargeObj        = order?.charges?.find(c => c?.id === chargeId) || order?.charges?.[0] || null;
+        const chargeStatusEnum = mapChargeStatusToEnum(chargeObj?.status);
+
+        await prisma.$transaction(async (tx) => {
+          await tx.pedido.updateMany({
+            where: { code: orderId },
+            data: { status: orderStatusEnum },
+          });
+          if (chargeId) {
+            await tx.charge.updateMany({
+              where: { providerId: chargeId },
+              data: { status: chargeStatusEnum, raw: chargeObj || {} },
+            });
+          }
+        });
+      }
+
+      await logWebhook({ event: type, orderCode: orderId, payload: evt });
+      await onPaid({ orderId, chargeId, metadata });
+      return NextResponse.json({ ok: true, handled: 'charge.paid' });
+    }
+
+    // order.paid
+    if (type === 'order.paid') {
+      const orderId = data?.id || null;
+
+      let order = null; let metadata = {};
+      if (orderId) {
+        try {
+          order = await pagarmeGET(`/orders/${orderId}`);
+          metadata = order?.metadata || {};
+        } catch {}
+      }
+
+      if (order) {
+        const orderStatusEnum = mapOrderStatusToPaymentEnum(order?.status);
+        const chargeObj       = order?.charges?.[0] || null;
+        const chargeId        = chargeObj?.id || null;
+        const chargeStatusEnum= mapChargeStatusToEnum(chargeObj?.status);
+
+        await prisma.$transaction(async (tx) => {
+          await tx.pedido.updateMany({
+            where: { code: orderId },
+            data: { status: orderStatusEnum },
+          });
+          if (chargeId) {
+            await tx.charge.updateMany({
+              where: { providerId: chargeId },
+              data: { status: chargeStatusEnum, raw: chargeObj || {} },
+            });
+          }
+        });
+
+        await logWebhook({ event: type, orderCode: orderId, payload: evt });
+        await onPaid({ orderId, chargeId, metadata });
+        return NextResponse.json({ ok: true, handled: 'order.paid' });
+      }
+
+      await logWebhook({ event: type, orderCode: orderId, payload: evt });
+      return NextResponse.json({ ok: true, handled: 'order.paid', note: 'order not found via API' });
+    }
+
+    // Outros eventos → só log (evita retries chatos)
+    await logWebhook({ event: type, orderCode: null, payload: evt });
+    return NextResponse.json({ received: true, ignored_type: type }, { status: 200 });
+  } catch (err) {
+    // Em dev, devolve 200 para não gerar loop de retries
+    return NextResponse.json({ error: err.message }, { status: 200 });
   }
 }
