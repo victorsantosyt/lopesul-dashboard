@@ -133,3 +133,33 @@ export async function pingRouter() {
     return { ok: true, res };
   });
 }
+/* ===== Compatibilidade p/ rotas antigas (build fix) ===== */
+
+// liberarCliente → tenta usar liberarAcesso/allowClient/liberar
+export async function liberarCliente(...args) {
+  if (typeof liberarAcesso === 'function') return liberarAcesso(...args);
+  if (typeof allowClient === 'function') return allowClient(...args);
+  if (typeof liberar === 'function') return liberar(...args);
+  throw new Error('liberarCliente: implementação ausente em lib/mikrotik.js');
+}
+
+// alguns handlers usam este nome
+export async function liberarClienteNoMikrotik(...args) {
+  return liberarCliente(...args);
+}
+
+// revogarCliente → tenta usar revogarAcesso/revokeClient/revogar
+export async function revogarCliente(...args) {
+  if (typeof revogarAcesso === 'function') return revogarAcesso(...args);
+  if (typeof revokeClient === 'function') return revokeClient(...args);
+  if (typeof revogar === 'function') return revogar(...args);
+  throw new Error('revogarCliente: implementação ausente em lib/mikrotik.js');
+}
+
+// listPppActive → tenta usar listarPppActive/getPppActive/listActiveSessions
+export async function listPppActive(...args) {
+  if (typeof listarPppActive === 'function') return listarPppActive(...args);
+  if (typeof getPppActive === 'function') return getPppActive(...args);
+  if (typeof listActiveSessions === 'function') return listActiveSessions(...args);
+  throw new Error('listPppActive: implementação ausente em lib/mikrotik.js');
+}

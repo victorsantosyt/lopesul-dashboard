@@ -43,3 +43,24 @@ export function __pagarmeDebugMask() {
   return KEY.slice(0, 4) + '...' + KEY.slice(-4);
 }
 export const __pagarmeBase = BASE;
+/* ===== Compatibilidade p/ rotas antigas (build fix) ===== */
+
+// createCardOrder → preferir createOrder; fallback para createCardPayment
+export async function createCardOrder(input = {}) {
+  // Se você já tem uma função genérica para criar orders:
+  if (typeof createOrder === 'function') {
+    // garante que o método é cartão, preservando payload existente
+    const base = { ...input };
+    const payments = base.payments && Array.isArray(base.payments) ? base.payments : [];
+    const hasCard = payments.some(p => p?.payment_method === 'credit_card');
+    const finalPayments = hasCard ? payments : [{ payment_method: 'credit_card', ...(base.card ? { card: base.card } : {}) }];
+    return createOrder({ ...base, payments: finalPayments });
+  }
+
+  // Se sua lib tiver um helper específico para cartão:
+  if (typeof createCardPayment === 'function') {
+    return createCardPayment(input);
+  }
+
+  throw new Error('createCardOrder: implementação ausente em lib/pagarme.js');
+}
