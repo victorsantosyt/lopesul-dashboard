@@ -1,4 +1,4 @@
-/* Reset bÃ¡sico */
+/* Reset básico */
 * {
   margin: 0;
   padding: 0;
@@ -10,7 +10,7 @@ html, body {
   width: 100%;
 }
 
-/* Fundo com imagem e degradÃª */
+/* Fundo com imagem e degradê */
 body {
   margin: 0;
   padding: 0;
@@ -21,7 +21,6 @@ body {
   background-attachment: fixed;
   font-family: Arial, sans-serif;
 }
-
 
 /* Estrutura principal */
 main {
@@ -35,10 +34,10 @@ main {
   text-align: center;
 }
 
-/* CabeÃ§alho */
+/* Cabeçalho */
 header {
   display: block;
-  text-align: top;
+  text-align: center; /* corrigido (antes tinha 'top') */
   margin-bottom: 10px;
 }
 
@@ -54,7 +53,8 @@ header {
   color: rgb(255, 255, 255);
   margin-bottom: 10px;
 }
-/* Imagem do Ã´nibus */
+
+/* Imagem do ônibus */
 .onibus img {
   width: 100%;
   max-width: 290px;
@@ -72,7 +72,7 @@ header {
   letter-spacing: 10px;
 }
 
-/* Container dos botÃµes */
+/* Container dos botões (linha antiga) */
 .planos {
   display: flex;
   justify-content: center;
@@ -81,7 +81,7 @@ header {
   margin-top: 40px;
 }
 
-/* Estilo dos botÃµes */
+/* Estilo dos botões (linha antiga) */
 .planos button {
   background-color: rgb(0, 152, 218);
   color: rgb(255, 255, 255);
@@ -97,12 +97,12 @@ header {
 }
 
 .planos button:hover {
-  background-color: rgb(60, 202, 241); /* #3ccaf1 convertido */
+  background-color: rgb(60, 202, 241);
   color: rgb(255, 255, 255);
   transform: scale(1.09);
 }
 
-/* RodapÃ© */
+/* Rodapé */
 .footer {
   position: fixed;
   width: 290px;
@@ -111,7 +111,7 @@ header {
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
-  color: rgba(159, 159, 159, 0.876); /* #113d49b8 convertido */
+  color: rgba(159, 159, 159, 0.876);
 }
 
 .logo-footer {
@@ -131,24 +131,6 @@ header {
   box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);
 }
 
-@media (max-width: 768px) {
-  body {
-    background-attachment: scroll;
-    background-position: top;
-  }
-
-  .planos {
-    flex-direction: visible;
-    align-items: center;
-    gap: 15px;
-    margin-top: 10px;
-  }
-
-  .planos button {
-    width: 100%;
-    font-size: 18px;
-  }
-}
 /* ===== Ajustes de centralização e responsividade ===== */
 
 /* centraliza no eixo Y com folga no topo */
@@ -197,6 +179,7 @@ h1{
   .grid-planos{ justify-content: center; }
   .btn-plano{ width: 100%; max-width: 280px; }
 }
+
 /* ===== Captive: ajustes finais ===== */
 
 /* centralização com respiro no topo */
@@ -243,7 +226,67 @@ h1{   margin: clamp(8px, 1.6vh, 18px) 0 clamp(12px, 2vh, 22px) !important; }
   .btn-plano{ width: 100% !important; max-width: 280px !important; }
 }
 
-/* ---- correções da “linha antiga” para não quebrar nada ---- */
-header{ text-align: center; }                  /* conserta 'text-align: top' */
-.planos{ display:flex; gap:15px; justify-content:center; flex-wrap:wrap; } /* caso exista em algum html legado */
-@media (max-width:768px){ .planos{ flex-direction: column; } }            /* corrige 'flex-direction: visible' */
+/* ---- compatibilidade com HTML legado ---- */
+.planos{ display:flex; gap:15px; justify-content:center; flex-wrap:wrap; } /* garante não quebrar layouts antigos */
+@media (max-width:768px){
+  .planos{ flex-direction: column; }  /* corrige qualquer 'flex-direction: visible' antigo */
+}
+
+/* ===== MOBILE: 3 botões na mesma linha ===== */
+@media (max-width: 480px) {
+  .grid-planos,
+  .planos,
+  .container-botoes {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: center !important;
+    align-items: stretch !important;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .btn-plano,
+  .botao-pacote,
+  .planos button {
+    display: inline-flex !important;
+    flex: 0 0 calc((100% - 2px) / 3);  /* 3 colunas exatas */
+    margin-right: 1px;                 /* gap mínimo */
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 10px 6px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+  }
+
+  /* Hover / active effects */
+  .btn-plano:hover,
+  .botao-pacote:hover,
+  .planos button:hover {
+    background-color: #0056b3;
+    transform: scale(1.05);
+  }
+
+  .btn-plano:active,
+  .botao-pacote:active,
+  .planos button:active {
+    transform: scale(0.97);
+  }
+
+  /* remove sobra da última */
+  .btn-plano:last-child,
+  .botao-pacote:last-child,
+  .planos button:last-child {
+    margin-right: 0;
+  }
+}
