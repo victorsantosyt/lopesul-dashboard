@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
@@ -8,20 +10,31 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+////////////////////////////////////////
+//  Autenticação / Operadores
+////////////////////////////////////////
+
 model Operador {
   id       String   @id @default(uuid())
-  nome     String   @unique @map("usuario") // mantém mapeamento existente
-  senha    String
+  // Login case-insensitive e único (requer extensão CITEXT)
+  nome     String   @unique @db.Citext @map("usuario")
+  // Hash de senha (argon2/bcrypt). 128 cobre atual e futuro com folga
+  senha    String   @db.VarChar(128)
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("createdAt")
 
   @@map("operadores")
+  @@index([ativo])
 }
+
+////////////////////////////////////////
+//  Frota / Dispositivos / Vendas
+////////////////////////////////////////
 
 model Frota {
   id           String        @id @default(uuid())
   criadoEm     DateTime      @default(now()) @map("createdAt")
-  nome         String?
+  nome         String?       @db.VarChar(140)
   dispositivos Dispositivo[]
   vendas       Venda[]
 
@@ -41,7 +54,7 @@ model Venda {
 
 model Dispositivo {
   id           String   @id @default(uuid())
-  ip           String   @db.Inet // valida IPv4/IPv6 no Postgres
+  ip           String   @db.Inet        // IPv4/IPv6 validado no Postgres
   criadoEm     DateTime @default(now()) @map("createdAt")
   atualizadoEm DateTime @updatedAt
   frotaId      String
@@ -52,16 +65,20 @@ model Dispositivo {
   @@index([ip])
 }
 
+////////////////////////////////////////
+//  Sessões (captive)
+////////////////////////////////////////
+
 model SessaoAtiva {
   id         String   @id @default(cuid())
-  ipCliente  String   @unique
-  macCliente String?
-  plano      String
+  ipCliente  String   @unique @db.Inet
+  macCliente String?  @db.VarChar(17)
+  plano      String   @db.VarChar(64)
   inicioEm   DateTime @default(now())
   expiraEm   DateTime
   ativo      Boolean  @default(true)
 
-  // relacionamento agora é com Pedido
+  // relacionamento com Pedido (opcional)
   pedidoId String?
   pedido   Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
 
@@ -70,15 +87,20 @@ model SessaoAtiva {
   @@map("sessoes_ativas")
 }
 
+////////////////////////////////////////
+//  Configurações
+////////////////////////////////////////
+
 model Config {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
 }
 
-//
-// 🔥 Modelos para integração Pagar.me
-//
+////////////////////////////////////////
+//  Integração Pagar.me
+////////////////////////////////////////
+
 enum PaymentStatus {
   PENDING
   PAID
@@ -108,13 +130,13 @@ model Pedido {
   amount        Int
   method        PaymentMethod
   status        PaymentStatus @default(PENDING)
-  description   String?
-  deviceMac     String?
-  ip            String?       @db.Inet // consistente com Dispositivo/ip
-  busId         String?
-  customerName  String?
-  customerEmail String?
-  customerDoc   String?
+  description   String?       @db.VarChar(140)
+  deviceMac     String?       @db.VarChar(17)
+  ip            String?       @db.Inet
+  busId         String?       @db.VarChar(64)
+  customerName  String?       @db.VarChar(140)
+  customerEmail String?       @db.Citext
+  customerDoc   String?       @db.VarChar(14) // CPF/CNPJ sem máscara
   metadata      Json?
   charges       Charge[]
   createdAt     DateTime      @default(now())
@@ -123,18 +145,19 @@ model Pedido {
 
   @@index([status, createdAt])
   @@index([method, createdAt])
+  @@index([busId, createdAt])
 }
 
 model Charge {
   id         String        @id @default(cuid())
   pedidoId   String
   pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  providerId String? // id da charge no Pagar.me
+  providerId String?       @db.VarChar(64)  // id da charge no Pagar.me
   status     ChargeStatus  @default(CREATED)
   method     PaymentMethod
-  qrCode     String? // Pix copia-e-cola
-  qrCodeUrl  String? // Pix imagem
-  raw        Json?
+  qrCode     String?       @db.Text         // Pix copia-e-cola (pode ser longo)
+  qrCodeUrl  String?       @db.Text         // URL da imagem (pode ser longa)
+  raw        Json?                         // mantemos somente no DB; não expor via API
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -145,8 +168,8 @@ model Charge {
 
 model WebhookLog {
   id        String   @id @default(cuid())
-  event     String?
-  orderCode String?
+  event     String?  @db.VarChar(64)
+  orderCode String?  @db.VarChar(64)
   payload   Json?
   createdAt DateTime @default(now())
 
