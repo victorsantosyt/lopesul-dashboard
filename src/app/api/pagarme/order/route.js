@@ -7,13 +7,28 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
+    // ---- Validação mínima (sem libs) ----
+    const amount = Number.isFinite(+body.amount) ? Math.round(+body.amount) : 0;
+    const descricao = typeof body.descricao === 'string' ? body.descricao.trim() : '';
+    const nome = typeof body.nome === 'string' ? body.nome.trim() : '';
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
+
+    if (amount <= 0 || !descricao) {
+      return NextResponse.json({ error: 'Parâmetros inválidos.' }, { status: 400 });
+    }
+    // CPF/CNPJ opcional aqui, mas se vier, precisa ter 11 ou 14 dígitos
+    if (cpf && !(cpf.length === 11 || cpf.length === 14)) {
+      return NextResponse.json({ error: 'Documento inválido.' }, { status: 400 });
+    }
+
     // monte o payload de order conforme seu fluxo (exemplo mínimo Pix):
     const order = {
-      items: [{ amount: body.amount, description: body.descricao, quantity: 1 }],
+      items: [{ amount, description: descricao, quantity: 1 }],
       customer: {
-        name: body.nome,
-        email: body.email,
-        document: body.cpf,
+        name: nome || 'Cliente',
+        email: email || undefined,
+        document: cpf || undefined,
         type: 'individual',
       },
       payments: [{
@@ -21,10 +36,10 @@ export async function POST(req) {
         pix: { expires_in: parseInt(process.env.PIX_EXPIRES_SEC || '1800', 10) }
       }],
       metadata: {
-        busId: body.busId,
-        deviceIp: body.deviceIp,
-        deviceMac: body.deviceMac,
-        plano: body.plano,
+        busId: body.busId || null,
+        deviceIp: body.deviceIp || null,
+        deviceMac: body.deviceMac || null,
+        plano: body.plano || null,
       },
     };
 
@@ -39,16 +54,16 @@ export async function POST(req) {
     const pedido = await prisma.pedido.create({
       data: {
         code: created.code || created.id || created.order_id || '',
-        amount: body.amount,
+        amount,
         method: 'PIX',
         status: 'PENDING',
-        description: body.descricao || null,
-        deviceMac: body.deviceMac || null,
-        ip: body.deviceIp || null,
-        busId: body.busId || null,
-        customerName: body.nome || null,
-        customerEmail: body.email || null,
-        customerDoc: body.cpf || null,
+        description: descricao || null,
+        deviceMac: order.metadata.deviceMac,
+        ip: order.metadata.deviceIp,
+        busId: order.metadata.busId,
+        customerName: nome || null,
+        customerEmail: email || null,
+        customerDoc: cpf || null,
         metadata: order.metadata,
         charges: {
           create: [{
@@ -57,24 +72,37 @@ export async function POST(req) {
             providerId: charge?.id || null,
             qrCode: qr || null,
             qrCodeUrl: qrUrl || null,
+            // mantém o raw APENAS no banco; não exponha ao cliente
             raw: created,
           }]
         }
       }
     });
 
+    // resposta ao cliente (sem dados sensíveis / raw)
     return NextResponse.json({
       pedido_id: pedido.id,
-      order_id: created.id || created.code,
+      order_id: created.id || created.code || null,
       charge_id: charge?.id || null,
       qr_code: qr,
       qr_code_url: qrUrl,
-      raw: created,
     });
   } catch (e) {
-    // se veio da lib, trará e.status e e.data
-    console.error('POST /api/pagarme/order error:', e.status, e.data || e.message);
-    const msg = e.data ? JSON.stringify(e.data) : e.message;
-    return NextResponse.json({ error: `Pagar.me POST /orders ${e.status || ''}: ${msg}` }, { status: e.status || 500 });
+    // Log detalhado apenas no servidor
+    console.error('POST /api/pagarme/order error:', e);
+
+    // Resposta genérica ao cliente (sem stack/message internas)
+    // Se for erro do PSP com status conhecido, normalize para 400/402; senão 500
+    const status = (typeof e?.status === 'number' && e.status >= 400 && e.status < 600)
+      ? e.status
+      : 500;
+
+    const clientMsg = status === 400
+      ? 'Falha de validação na cobrança.'
+      : status === 402
+        ? 'Pagamento recusado.'
+        : 'Falha ao processar o pagamento.';
+
+    return NextResponse.json({ error: clientMsg }, { status });
   }
 }
