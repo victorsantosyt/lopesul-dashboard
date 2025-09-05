@@ -17,7 +17,7 @@
     "start": "next start -p $PORT"
   },
   "dependencies": {
-    "@prisma/client": "6.9.0",
+    "@prisma/client": "^6.15.0",
     "autoprefixer": "^10.4.0",
     "bcryptjs": "^2.4.3",
     "echarts": "^5.6.0",
@@ -37,6 +37,6 @@
     "tailwindcss": "^3.3.0"
   },
   "devDependencies": {
-    "prisma": "6.9.0"
+    "prisma": "^6.15.0"
   }
 }
