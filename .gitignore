@@ -15,9 +15,9 @@ yarn-error.log*
 
 # Env / secrets
 .env
-*.local
+.env.exemple
 .env.*.local
-
+.nvmrc
 # Prisma
 prisma/dev.db
 prisma/dev.db-journal

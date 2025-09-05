@@ -16,10 +16,12 @@ export async function GET() {
       const sampleLen = Array.isArray(data?.data) ? data.data.length : null;
       ping = { ok: true, status: 200, sample: sampleLen };
     } catch (e) {
+      // 👇 Ajuste: log completo no servidor e mensagem genérica no cliente
+      console.error('GET /api/_debug/pagarme ping error:', e);
       ping = {
         ok: false,
         status: e?.status || 0,
-        data: e?.data || String(e),
+        data: (typeof e?.message === 'string' && e.message) ? e.message : 'Internal error',
       };
     }
 
