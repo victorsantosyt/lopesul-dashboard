@@ -12,7 +12,7 @@ import {
   UserCog,
   Server,
   LogOut,
-} from 'lucide-react';
+} from 'lucide-react';    
 
 const COLORS = {
   sidebar: '#213760',
