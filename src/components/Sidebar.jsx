@@ -11,6 +11,7 @@ import {
   Settings,
   UserCog,
   Server,
+  LogOut,
 } from 'lucide-react';
 
 const COLORS = {
@@ -29,7 +30,7 @@ const COLORS = {
 const navLinks = [
   { href: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
   { href: '/pagamentos',    label: 'Pagamentos',    icon: DollarSign },
-  { href: '/relatorios',    label: 'Relatorios',      icon: BarChart2 },
+  { href: '/relatorios',    label: 'Relatórios',    icon: BarChart2 },
   { href: '/acessos',       label: 'Acessos',       icon: Users },
   { href: '/frotas',        label: 'Frotas',        icon: Bus },
   { href: '/dispositivos',  label: 'Dispositivos',  icon: Server },
@@ -52,19 +53,20 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       {/* Overlay (mobile) */}
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/40 md:hidden transition-opacity ${
+        className={`fixed inset-0 z-40 bg-black/40 lg:hidden transition-opacity ${
           open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         aria-hidden={!open}
       />
 
-      {/* Drawer / Lateral */}
+      {/* Sidebar */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 h-screen w-64 flex flex-col justify-between
+          fixed left-0 top-0 z-50 h-screen flex flex-col justify-between
           transition-transform duration-300 will-change-transform
+          w-16 lg:w-64
           ${open ? 'translate-x-0' : '-translate-x-full'}
-          md:translate-x-0
+          lg:translate-x-0
         `}
         style={{
           background: `linear-gradient(180deg, ${COLORS.sidebar} 0%, ${COLORS.sidebar2} 100%)`,
@@ -74,13 +76,12 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
           boxShadow: '2px 0 12px rgba(0,0,0,0.10)',
           borderRight: `1px solid ${COLORS.border}`,
         }}
-        role="dialog"
-        aria-modal="true"
+        role="navigation"
         aria-label="Menu lateral"
       >
-        {/* Cabeçalho do menu (apenas mobile) */}
+        {/* Cabeçalho (apenas mobile/tablet) */}
         <div
-          className="md:hidden flex items-center justify-between px-4 h-14 border-b"
+          className="lg:hidden flex items-center justify-between px-3 h-14 border-b"
           style={{ borderColor: COLORS.divider }}
         >
           <span className="font-semibold">Menu</span>
@@ -94,7 +95,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         </div>
 
         {/* Conteúdo */}
-        <div className="flex-1 overflow-y-auto px-4 pt-6 pb-4">
+        <div className="flex-1 overflow-y-auto px-2 lg:px-4 pt-4 lg:pt-6 pb-3 lg:pb-4">
           <nav className="flex flex-col gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => {
               const active = isActive(href);
@@ -102,7 +103,9 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                 <Link
                   key={href}
                   href={href}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors"
+                  title={label}              // tooltip quando estiver só com ícones
+                  aria-label={label}
+                  className="flex items-center gap-3 px-2 lg:px-3 py-2 rounded-lg transition-colors"
                   style={{
                     background: active ? COLORS.activeBg : 'transparent',
                     color: COLORS.textDim,
@@ -113,10 +116,11 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                   onMouseLeave={(e) => {
                     if (!active) e.currentTarget.style.background = 'transparent';
                   }}
-                  onClick={onClose /* fecha o drawer ao navegar no mobile */}
+                  onClick={onClose}
                 >
-                  <Icon size={22} />
-                  <span style={{ fontWeight: 600 }}>{label}</span>
+                  <Icon size={22} className="shrink-0" />
+                  {/* rótulo oculto em telas pequenas */}
+                  <span className="hidden lg:inline font-semibold truncate">{label}</span>
                 </Link>
               );
             })}
@@ -125,7 +129,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
 
         {/* Rodapé */}
         <div
-          className="px-4 pt-3 pb-5"
+          className="px-2 lg:px-4 pt-2 pb-4"
           style={{ borderTop: `1px solid ${COLORS.divider}` }}
         >
           <button
@@ -133,12 +137,15 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
               onClose();
               logout?.();
             }}
-            className="w-full py-2 rounded-lg font-semibold transition-colors"
+            className="w-full flex items-center justify-center lg:justify-start gap-3 py-2 rounded-lg font-semibold transition-colors"
             style={{ background: COLORS.btn, color: COLORS.text }}
             onMouseEnter={(e) => (e.currentTarget.style.background = COLORS.btnHover)}
             onMouseLeave={(e) => (e.currentTarget.style.background = COLORS.btn)}
+            title="Sair"
+            aria-label="Sair"
           >
-            Sair
+            <LogOut size={20} className="shrink-0" />
+            <span className="hidden lg:inline">Sair</span>
           </button>
         </div>
       </aside>
