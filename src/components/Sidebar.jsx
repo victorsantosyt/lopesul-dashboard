@@ -38,11 +38,6 @@ const navLinks = [
   { href: '/operadores',    label: 'Operadores',    icon: UserCog },
 ];
 
-/**
- * Props:
- * - open?: boolean (controle do drawer no mobile)
- * - onClose?: () => void  (fechar drawer no mobile)
- */
 export default function Sidebar({ open = false, onClose = () => {} }) {
   const pathname = usePathname();
   const { logout } = useAuth() || {};
@@ -79,7 +74,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         role="navigation"
         aria-label="Menu lateral"
       >
-        {/* Cabeçalho (apenas mobile/tablet) */}
+        {/* Cabeçalho (mobile) */}
         <div
           className="lg:hidden flex items-center justify-between px-3 h-14 border-b"
           style={{ borderColor: COLORS.divider }}
@@ -103,7 +98,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                 <Link
                   key={href}
                   href={href}
-                  title={label}              // tooltip quando estiver só com ícones
+                  title={label}
                   aria-label={label}
                   className="flex items-center gap-3 px-2 lg:px-3 py-2 rounded-lg transition-colors"
                   style={{
@@ -119,7 +114,6 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                   onClick={onClose}
                 >
                   <Icon size={22} className="shrink-0" />
-                  {/* rótulo oculto em telas pequenas */}
                   <span className="hidden lg:inline font-semibold truncate">{label}</span>
                 </Link>
               );
@@ -127,7 +121,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
           </nav>
         </div>
 
-        {/* Rodapé */}
+        {/* Rodapé (logout) – mobile: preenchido; desktop: ghost */}
         <div
           className="px-2 lg:px-4 pt-2 pb-4"
           style={{ borderTop: `1px solid ${COLORS.divider}` }}
@@ -137,10 +131,19 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
               onClose();
               logout?.();
             }}
-            className="w-full flex items-center justify-center lg:justify-start gap-3 py-2 rounded-lg font-semibold transition-colors"
-            style={{ background: COLORS.btn, color: COLORS.text }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = COLORS.btnHover)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = COLORS.btn)}
+            // estilos responsivos:
+            // - mobile: botão cheio e centralizado
+            // - desktop: ghost, alinhado à esquerda, com borda sutil
+            className="
+              w-full flex items-center gap-3 rounded-lg font-semibold
+              px-3 py-2
+              justify-center lg:justify-start
+              text-white lg:text-slate-200
+              bg-[rgba(30,77,188,0.99)] lg:bg-transparent
+              hover:bg-[rgba(188,35,30,0.99)] lg:hover:bg-white/10
+              border-0 lg:border lg:border-white/10
+              transition-colors
+            "
             title="Sair"
             aria-label="Sair"
           >
