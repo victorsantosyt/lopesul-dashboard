@@ -1,33 +1,55 @@
 // src/lib/mikrotik.js
 import { RouterOSClient } from 'routeros-client';
 
-const HOST = process.env.MIKROTIK_HOST || '192.168.88.1';
-const USER = process.env.MIKROTIK_USER || 'admin';
-const PASS = process.env.MIKROTIK_PASS || '';
-const PORT = Number(process.env.MIKROTIK_PORT || 8728);
-const SSL  = String(process.env.MIKROTIK_SSL || 'false').toLowerCase() === 'true';
-const TIMEOUT_MS = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
-const PAID_LIST  = process.env.MIKROTIK_PAID_LIST || 'paid_clients';
+// ---- ENV helpers (aceita sinônimos pra evitar typos) ----
+const yes = (v) => ['1', 'true', 'yes', 'on'].includes(String(v ?? '').toLowerCase());
 
-/**
- * Cria cliente RouterOS com timeout + auto close
- */
+const HOST =
+  process.env.MIKROTIK_HOST ||
+  process.env.MIKOTIK_HOST || // fallback p/ typo visto em prints
+  '192.168.88.1';
+
+const USER =
+  process.env.MIKROTIK_USER ||
+  process.env.MIKROTIK_USERNAME ||
+  'admin';
+
+const PASS =
+  process.env.MIKROTIK_PASS ||
+  process.env.MIKROTIK_PASSWORD ||
+  '';
+
+const PORT = Number(
+  process.env.MIKROTIK_PORT ||
+  process.env.PORTA_MIKROTIK || // sinônimo (pt-BR)
+  (yes(process.env.MIKROTIK_SSL) ? 8729 : 8728)
+);
+
+const SECURE =
+  yes(process.env.MIKROTIK_SSL) ||
+  yes(process.env.MIKROTIK_SECURE);
+
+const TIMEOUT_MS = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
+
+const PAID_LIST =
+  process.env.MIKROTIK_PAID_LIST ||
+  process.env.LISTA_PAGA_MIKROTIK || // sinônimo (pt-BR)
+  'paid_clients';
+
+// ---- Cliente RouterOS ----
 function createClient() {
   return new RouterOSClient({
     host: HOST,
     user: USER,
-    password: PASS,
+    pass: PASS,          // << importante: 'pass' (não 'password')
     port: PORT,
-    ssl: SSL,
+    secure: SECURE,      // << importante: 'secure' (não 'ssl')
     timeout: TIMEOUT_MS,
-    // Opcional: ignore TLS self-signed
-    // rejectUnauthorized: false,
+    // rejectUnauthorized: false, // se usar TLS self-signed
   });
 }
 
-/**
- * Executa um bloco com cliente conectado e garante fechamento
- */
+
 async function withClient(fn) {
   const client = createClient();
   try {
@@ -38,9 +60,7 @@ async function withClient(fn) {
   }
 }
 
-/**
- * Busca item na address-list por address e list (retorna ID do item ou null)
- */
+// ---- Address-list helpers ----
 async function findAddressListId(client, { address, list }) {
   const res = await client.menu('/ip/firewall/address-list').print({
     where: [
@@ -48,42 +68,35 @@ async function findAddressListId(client, { address, list }) {
       ['list', '=', list],
     ],
   });
-  // routeros-client retorna array de objetos com .id (por exemplo '*2')
-  if (Array.isArray(res) && res.length > 0) {
+   if (Array.isArray(res) && res.length > 0) {
     return res[0]['.id'] || res[0].id || null;
   }
   return null;
 }
 
-/**
- * Adiciona (se não existir) à address-list
- */
+
 async function addToAddressList(client, { list, address, comment }) {
   const id = await findAddressListId(client, { address, list });
-  if (id) return { id, created: false }; // já existe (idempotente)
+  if (id) return { id, created: false }; // idempotente
 
   const payload = { list, address };
   if (comment) payload.comment = comment;
 
-  const res = await client.menu('/ip/firewall/address-list').add(payload);
-  const newId = res?.['ret'] || res?.id || null; // depende da versão
+  const out = await client.menu('/ip/firewall/address-list').add(payload);
+  const newId = out?.ret || out?.id || null;
   return { id: newId, created: true };
 }
 
-/**
- * Remove (se existir) da address-list
- */
+
 async function removeFromAddressList(client, { list, address }) {
   const id = await findAddressListId(client, { address, list });
   if (!id) return { removed: false, reason: 'not_found' };
-
-  await client.menu('/ip/firewall/address-list').remove({ id });
+  // RouterOS espera '.id'
+  await client.menu('/ip/firewall/address-list').remove({ '.id': id });
   return { removed: true };
 }
 
-/**
- * Verifica se já está presente na lista
- */
+// ---- API pública ----
 export async function estaPago({ ip, list = PAID_LIST }) {
   if (!ip) throw new Error('IP é obrigatório');
   return withClient(async (client) => {
@@ -92,50 +105,41 @@ export async function estaPago({ ip, list = PAID_LIST }) {
   });
 }
 
-/**
- * Libera acesso: adiciona IP em address-list "paid_clients".
- * Idempotente: não duplica se já existir.
- * @param {object} args
- * @param {string} args.ip         IP do cliente (ex.: '10.0.0.55')
- * @param {string} [args.busId]    Opcional: frota/ônibus para comentar log
- * @param {string} [args.list]     Nome da address-list (default: PAID_LIST)
- * @param {string} [args.comment]  Comentário customizado
- */
+
 export async function liberarAcesso({ ip, busId, list = PAID_LIST, comment }) {
   if (!ip) throw new Error('IP é obrigatório');
   const cmt = comment || (busId ? `pago via Pix - ${busId}` : 'pago via Pix');
-
-  return withClient(async (client) => {
+    return withClient(async (client) => {
     const out = await addToAddressList(client, { list, address: ip, comment: cmt });
     return { ok: true, list, ip, ...out };
   });
 }
 
-/**
- * Revoga acesso: remove IP da address-list "paid_clients".
- */
+
 export async function revogarAcesso({ ip, list = PAID_LIST }) {
   if (!ip) throw new Error('IP é obrigatório');
-
-  return withClient(async (client) => {
+ return withClient(async (client) => {
     const out = await removeFromAddressList(client, { list, address: ip });
     return { ok: out.removed, removed: out.removed, list, ip, reason: out.reason || null };
   });
 }
 
-/**
- * (Opcional) Pinga o roteador pela API para health-check
- */
+
 export async function pingRouter() {
   return withClient(async (client) => {
-    // /ping 1.1.1.1 count=1 → apenas um teste rápido
-    const res = await client.menu('/ping').once({ address: '1.1.1.1', count: 1 });
-    return { ok: true, res };
+    // teste rápido (qualquer um funciona nas versões recentes)
+    try {
+      const res = await client.menu('/ping').once({ address: '1.1.1.1', count: 1 });
+      return { ok: true, res };
+    } catch {
+      const res = await client.menu('/tool/ping').once({ address: '1.1.1.1', count: 1 });
+      return { ok: true, res };
+    }
   });
 }
-/* ===== Compatibilidade p/ rotas antigas (build fix) ===== */
 
-// liberarCliente → tenta usar liberarAcesso/allowClient/liberar
+
+// ---- Compat nomes antigos (mantidos) ----
 export async function liberarCliente(...args) {
   if (typeof liberarAcesso === 'function') return liberarAcesso(...args);
   if (typeof allowClient === 'function') return allowClient(...args);
@@ -143,12 +147,12 @@ export async function liberarCliente(...args) {
   throw new Error('liberarCliente: implementação ausente em lib/mikrotik.js');
 }
 
-// alguns handlers usam este nome
+
 export async function liberarClienteNoMikrotik(...args) {
   return liberarCliente(...args);
 }
 
-// revogarCliente → tenta usar revogarAcesso/revokeClient/revogar
+
 export async function revogarCliente(...args) {
   if (typeof revogarAcesso === 'function') return revogarAcesso(...args);
   if (typeof revokeClient === 'function') return revokeClient(...args);
@@ -156,7 +160,7 @@ export async function revogarCliente(...args) {
   throw new Error('revogarCliente: implementação ausente em lib/mikrotik.js');
 }
 
-// listPppActive → tenta usar listarPppActive/getPppActive/listActiveSessions
+
 export async function listPppActive(...args) {
   if (typeof listarPppActive === 'function') return listarPppActive(...args);
   if (typeof getPppActive === 'function') return getPppActive(...args);
