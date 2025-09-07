@@ -12,7 +12,6 @@ import {
   UserCog,
   Server,
   LogOut,
-  Wifi, // <- novo ícone
 } from 'lucide-react';
 
 const COLORS = {
@@ -29,15 +28,14 @@ const COLORS = {
 };
 
 const navLinks = [
-  { href: '/dashboard',              label: 'Dashboard',     icon: LayoutDashboard },
-  { href: '/pagamentos',             label: 'Pagamentos',    icon: DollarSign },
-  { href: '/relatorios',             label: 'Relatórios',    icon: BarChart2 },
-  { href: '/acessos',                label: 'Acessos',       icon: Users },
-  { href: '/frotas',                 label: 'Frotas',        icon: Bus },
-  { href: '/dispositivos',           label: 'Dispositivos',  icon: Server },
-  { href: '/dispositivos/status',    label: 'Status',        icon: Wifi, sub: true }, // <- novo item (sub)
-  { href: '/configuracoes',          label: 'Configurações', icon: Settings },
-  { href: '/operadores',             label: 'Operadores',    icon: UserCog },
+  { href: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
+  { href: '/pagamentos',    label: 'Pagamentos',    icon: DollarSign },
+  { href: '/relatorios',    label: 'Relatórios',    icon: BarChart2 },
+  { href: '/acessos',       label: 'Acessos',       icon: Users },
+  { href: '/frotas',        label: 'Frotas',        icon: Bus },
+  { href: '/dispositivos',  label: 'Dispositivos',  icon: Server },
+  { href: '/configuracoes', label: 'Configurações', icon: Settings },
+  { href: '/operadores',    label: 'Operadores',    icon: UserCog },
 ];
 
 export default function Sidebar({ open = false, onClose = () => {} }) {
@@ -94,7 +92,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto px-2 lg:px-4 pt-4 lg:pt-6 pb-3 lg:pb-4">
           <nav className="flex flex-col gap-1">
-            {navLinks.map(({ href, label, icon: Icon, sub }) => {
+            {navLinks.map(({ href, label, icon: Icon }) => {
               const active = isActive(href);
               return (
                 <Link
@@ -103,7 +101,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                   title={label}
                   aria-label={label}
                   aria-current={active ? 'page' : undefined}
-                  className={`flex items-center gap-3 px-2 lg:px-3 py-2 rounded-lg transition-colors ${sub ? 'lg:ml-4' : ''}`}
+                  className="flex items-center gap-3 px-2 lg:px-3 py-2 rounded-lg transition-colors"
                   style={{
                     background: active ? COLORS.activeBg : 'transparent',
                     color: COLORS.textDim,
