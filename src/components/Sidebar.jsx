@@ -12,7 +12,8 @@ import {
   UserCog,
   Server,
   LogOut,
-} from 'lucide-react';    
+  Wifi, // <- novo ícone
+} from 'lucide-react';
 
 const COLORS = {
   sidebar: '#213760',
@@ -28,14 +29,15 @@ const COLORS = {
 };
 
 const navLinks = [
-  { href: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
-  { href: '/pagamentos',    label: 'Pagamentos',    icon: DollarSign },
-  { href: '/relatorios',    label: 'Relatórios',    icon: BarChart2 },
-  { href: '/acessos',       label: 'Acessos',       icon: Users },
-  { href: '/frotas',        label: 'Frotas',        icon: Bus },
-  { href: '/dispositivos',  label: 'Dispositivos',  icon: Server },
-  { href: '/configuracoes', label: 'Configurações', icon: Settings },
-  { href: '/operadores',    label: 'Operadores',    icon: UserCog },
+  { href: '/dashboard',              label: 'Dashboard',     icon: LayoutDashboard },
+  { href: '/pagamentos',             label: 'Pagamentos',    icon: DollarSign },
+  { href: '/relatorios',             label: 'Relatórios',    icon: BarChart2 },
+  { href: '/acessos',                label: 'Acessos',       icon: Users },
+  { href: '/frotas',                 label: 'Frotas',        icon: Bus },
+  { href: '/dispositivos',           label: 'Dispositivos',  icon: Server },
+  { href: '/dispositivos/status',    label: 'Status',        icon: Wifi, sub: true }, // <- novo item (sub)
+  { href: '/configuracoes',          label: 'Configurações', icon: Settings },
+  { href: '/operadores',             label: 'Operadores',    icon: UserCog },
 ];
 
 export default function Sidebar({ open = false, onClose = () => {} }) {
@@ -92,7 +94,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto px-2 lg:px-4 pt-4 lg:pt-6 pb-3 lg:pb-4">
           <nav className="flex flex-col gap-1">
-            {navLinks.map(({ href, label, icon: Icon }) => {
+            {navLinks.map(({ href, label, icon: Icon, sub }) => {
               const active = isActive(href);
               return (
                 <Link
@@ -100,7 +102,8 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                   href={href}
                   title={label}
                   aria-label={label}
-                  className="flex items-center gap-3 px-2 lg:px-3 py-2 rounded-lg transition-colors"
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex items-center gap-3 px-2 lg:px-3 py-2 rounded-lg transition-colors ${sub ? 'lg:ml-4' : ''}`}
                   style={{
                     background: active ? COLORS.activeBg : 'transparent',
                     color: COLORS.textDim,
@@ -121,7 +124,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
           </nav>
         </div>
 
-        {/* Rodapé (logout) – mobile: preenchido; desktop: ghost */}
+        {/* Rodapé (logout) – mobile: filled; desktop: ghost */}
         <div
           className="px-2 lg:px-4 pt-2 pb-4"
           style={{ borderTop: `1px solid ${COLORS.divider}` }}
@@ -131,9 +134,6 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
               onClose();
               logout?.();
             }}
-            // estilos responsivos:
-            // - mobile: botão cheio e centralizado
-            // - desktop: ghost, alinhado à esquerda, com borda sutil
             className="
               w-full flex items-center gap-3 rounded-lg font-semibold
               px-3 py-2

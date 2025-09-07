@@ -8,6 +8,13 @@ import {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// validação simples de IP (v4/v6)
+const ipv4 =
+  /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
+const ipv6 =
+  /^(([0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(([0-9a-f]{1,4}:){1,7}:)|(([0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4})|(([0-9a-f]{1,4}:){1,5}(:[0-9a-f]{1,4}){1,2})|(([0-9a-f]{1,4}:){1,4}(:[0-9a-f]{1,4}){1,3})|(([0-9a-f]{1,4}:){1,3}(:[0-9a-f]{1,4}){1,4})|(([0-9a-f]{1,4}:){1,2}(:[0-9a-f]{1,4}){1,5})|([0-9a-f]{1,4}:)((:[0-9a-f]{1,4}){1,6})|:((:[0-9a-f]{1,4}){1,7}|:))(%.+)?$/i;
+const isValidIp = (s) => ipv4.test(s) || ipv6.test(s);
+
 export default function MikrotikStatusPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [loadingPPP, setLoadingPPP] = useState(false);
@@ -17,6 +24,10 @@ export default function MikrotikStatusPage() {
   const [statusItems, setStatusItems] = useState([]);
   const [pppRows, setPppRows] = useState([]);
   const [msg, setMsg] = useState(null); // {type:'ok'|'err'|'info', text:''}
+
+  // ação por IP (para mostrar spinner só naquele botão)
+  const [actingIp, setActingIp] = useState(null);
+  const [actingAction, setActingAction] = useState(null); // 'liberar' | 'revogar' | null
 
   const busy = loadingStatus || loadingPPP;
 
@@ -58,6 +69,11 @@ export default function MikrotikStatusPage() {
   }
 
   async function handleLiberar(ip, busId) {
+    if (!isValidIp(ip || '')) {
+      toast('err', 'IP inválido');
+      return;
+    }
+    setActingIp(ip); setActingAction('liberar');
     try {
       const res = await fetch('/api/mikrotik/liberar', {
         method: 'POST',
@@ -74,10 +90,17 @@ export default function MikrotikStatusPage() {
       }
     } catch {
       toast('err', `Erro de rede ao liberar ${ip}`);
+    } finally {
+      setActingIp(null); setActingAction(null);
     }
   }
 
   async function handleRevogar(ip) {
+    if (!isValidIp(ip || '')) {
+      toast('err', 'IP inválido');
+      return;
+    }
+    setActingIp(ip); setActingAction('revogar');
     try {
       const res = await fetch('/api/mikrotik/revogar', {
         method: 'POST',
@@ -94,6 +117,8 @@ export default function MikrotikStatusPage() {
       }
     } catch {
       toast('err', `Erro de rede ao revogar ${ip}`);
+    } finally {
+      setActingIp(null); setActingAction(null);
     }
   }
 
@@ -143,11 +168,11 @@ export default function MikrotikStatusPage() {
           <button
             onClick={() => { fetchStatus(); fetchPPP(); }}
             disabled={busy}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-60"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 focus:ring-2 focus:ring-blue-400"
             title="Atualizar"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Atualizar
+            <span className="hidden sm:inline">Atualizar</span>
           </button>
         </div>
       </div>
@@ -191,26 +216,30 @@ export default function MikrotikStatusPage() {
               </tr>
             </thead>
             <tbody>
-              {statusItems.map((it, idx) => (
-                <tr key={`${it.id || it.address}-${idx}`} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-3 py-2 font-mono">{it.address || '—'}</td>
-                  <td className="px-3 py-2">{it.comment || '—'}</td>
-                  <td className="px-3 py-2">{it.creationTime || '—'}</td>
-                  <td className="px-3 py-2">{it.disabled ? 'não' : 'sim'}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => handleRevogar(it.address)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-600 text-white hover:bg-red-700"
-                        title="Revogar IP"
-                      >
-                        <ShieldX className="h-4 w-4" />
-                        <span className="hidden md:inline">Revogar</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {statusItems.map((it, idx) => {
+                const revoking = actingIp === it.address && actingAction === 'revogar';
+                return (
+                  <tr key={`${it.id || it.address}-${idx}`} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="px-3 py-2 font-mono">{it.address || '—'}</td>
+                    <td className="px-3 py-2">{it.comment || '—'}</td>
+                    <td className="px-3 py-2">{it.creationTime || '—'}</td>
+                    <td className="px-3 py-2">{it.disabled ? 'não' : 'sim'}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleRevogar(it.address)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 focus:ring-2 focus:ring-red-400"
+                          title="Revogar IP"
+                          disabled={!it.address || revoking}
+                        >
+                          {revoking ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldX className="h-4 w-4" />}
+                          <span className="hidden md:inline">Revogar</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {statusItems.length === 0 && (
                 <tr>
                   <td className="px-3 py-6 text-center text-slate-500" colSpan={5}>
@@ -248,30 +277,33 @@ export default function MikrotikStatusPage() {
               </tr>
             </thead>
             <tbody>
-              {pppRows.map((r, idx) => (
-                <tr key={`${r.id || r.name}-${idx}`} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-3 py-2">{r.name || '—'}</td>
-                  <td className="px-3 py-2 font-mono">{r.address || '—'}</td>
-                  <td className="px-3 py-2">{r.callerId || '—'}</td>
-                  <td className="px-3 py-2">{r.service || '—'}</td>
-                  <td className="px-3 py-2 flex items-center gap-1">
-                    <Clock className="h-4 w-4" /> {r.uptime || '—'}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => r.address && handleLiberar(r.address)}
-                        disabled={!r.address}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                        title="Liberar este IP"
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        <span className="hidden md:inline">Liberar</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {pppRows.map((r, idx) => {
+                const liberating = actingIp === r.address && actingAction === 'liberar';
+                return (
+                  <tr key={`${r.id || r.name}-${idx}`} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="px-3 py-2">{r.name || '—'}</td>
+                    <td className="px-3 py-2 font-mono">{r.address || '—'}</td>
+                    <td className="px-3 py-2">{r.callerId || '—'}</td>
+                    <td className="px-3 py-2">{r.service || '—'}</td>
+                    <td className="px-3 py-2 flex items-center gap-1">
+                      <Clock className="h-4 w-4" /> {r.uptime || '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => r.address && handleLiberar(r.address)}
+                          disabled={!r.address || liberating}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 focus:ring-2 focus:ring-emerald-400"
+                          title="Liberar este IP"
+                        >
+                          {liberating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                          <span className="hidden md:inline">Liberar</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {pppRows.length === 0 && (
                 <tr>
                   <td className="px-3 py-6 text-center text-slate-500" colSpan={6}>
@@ -301,6 +333,7 @@ function LiberarForm({ onSubmit }) {
           onChange={(e) => setIp(e.target.value)}
           className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
           placeholder="Ex.: 10.0.0.55"
+          inputMode="decimal"
         />
       </div>
       <div className="md:w-64">
@@ -317,11 +350,11 @@ function LiberarForm({ onSubmit }) {
         <button
           disabled={!can}
           onClick={() => can && onSubmit(ip.trim(), busId.trim() || undefined)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 focus:ring-2 focus:ring-emerald-400"
           title="Liberar IP manualmente"
         >
-          <ShieldCheck className="h-4 w-4" />
-          Liberar IP
+          <ShieldCheck className="h-5 w-5" />
+          <span className="hidden sm:inline">Liberar IP</span>
         </button>
       </div>
     </div>
