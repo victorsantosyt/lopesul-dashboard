@@ -78,6 +78,15 @@ export async function GET(req) {
   const limitRaw = parseInt(url.searchParams.get('limit') || '200', 10);
   const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 200, 500));
 
+  // 🔒 se faltar env, responde 200 + ok:false (não polui o log)
+  const cfg = getCfg();
+  if (!cfg.host || !cfg.user || !cfg.password) {
+    return NextResponse.json(
+      { ok: false, rows: [], count: 0, error: 'Config Mikrotik ausente (host/user/password)' },
+      { status: 200 }
+    );
+  }
+
   try {
     // tenta via lib; se falhar, usa fallback direto no RouterOS
     let rows = null;

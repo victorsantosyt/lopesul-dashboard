@@ -1,3 +1,4 @@
+// src/app/api/dashboard/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
@@ -15,7 +16,6 @@ export async function GET(req) {
     const safeNum = (n) => (Number.isFinite(n) ? n : 0);
 
     // ----- Pagamentos -----
-    // status: 'pago' | 'pendente' | 'expirado'
     let pagos = 0, pendentes = 0, expirados = 0, receitaCent = 0;
 
     try {
@@ -34,17 +34,17 @@ export async function GET(req) {
       // se a tabela ainda não existir, ignora e segue com zeros
     }
 
-    // ----- Vendas (se estiver usando) -----
+    // ----- Vendas -----
     let totalVendas = 0;
     let qtdVendas = 0;
     try {
       const vendasAgg = await prisma.venda.aggregate({
-        _sum: { valor: true }, // Venda.valor é Float no schema
+        _sum:   { valorCent: true }, // ✅ trocar de valor → valorCent
         _count: { id: true },
-        where: { data: between },
+        where:  { data: between },
       });
-      totalVendas = safeNum(vendasAgg._sum.valor || 0);
-      qtdVendas = safeNum(vendasAgg._count.id || 0);
+      totalVendas = safeNum(vendasAgg._sum.valorCent || 0) / 100; // centavos → R$
+      qtdVendas   = safeNum(vendasAgg._count.id || 0);
     } catch {
       // idem: sem tabela, retorna 0
     }
@@ -63,9 +63,9 @@ export async function GET(req) {
     return NextResponse.json({
       periodo: { from, to, days },
       kpis: {
-        totalVendas,
+        totalVendas,                // já em R$
         qtdVendas,
-        receita: receitaCent / 100, // converte centavos → reais
+        receita: receitaCent / 100, // pagos em R$
         pagamentos: { pagos, pendentes, expirados },
       },
       inventario: { frotas, dispositivos },

@@ -1,10 +1,13 @@
+// src/app/page.js
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function Home() {
+  // ✅ Next 15: cookies() precisa ser aguardado
+  const token = (await cookies()).get("token")?.value;
+
   // se já tiver token, manda para o dashboard
-  const token = cookies().get("token")?.value;
   if (token) redirect("/dashboard");
 
   return (

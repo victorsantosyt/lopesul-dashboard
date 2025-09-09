@@ -43,12 +43,12 @@ async function resolveToIp(host) {
 
 export async function GET() {
   const cfg = getCfg();
-  if (!cfg.host || !cfg.user || !cfg.pass) {
-    return NextResponse.json(
-      { ok: false, error: 'Configuração Mikrotik ausente (host/user/pass)' },
-      { status: 400 }
-    );
-  }
+ if (!cfg.host || !cfg.user || !cfg.pass) {
+  return NextResponse.json(
+    { ok: false, connected: false, error: 'Configuração Mikrotik ausente (host/user/pass)' },
+    { status: 200 } // 👈 antes era 400
+  );
+}
 
   try {
     // 1) conecta no MikroTik
