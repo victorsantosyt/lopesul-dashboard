@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ProtectedRoute from "../../components/ProtectedRoute";
 
-
-
 const fmtBRL = (v) =>
   (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -15,13 +13,62 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [dash, setDash] = useState(null);             // /api/dashboard
-  const [ultimos, setUltimos] = useState([]);         // /api/pagamentos
-  const [acessos, setAcessos] = useState([]);         // /api/sessoes
-  const [status, setStatus] = useState({              // dispositivos
+  const [dash, setDash] = useState(null);     // /api/dashboard
+  const [ultimos, setUltimos] = useState([]); // /api/pagamentos
+  const [acessos, setAcessos] = useState([]); // /api/sessoes
+
+  // ===== NOVO: status e RTT vindos do /api/mikrotik/ping =====
+  const [status, setStatus] = useState({
     starlink: null,
     mikrotik: null,
+    rttMs: null,
+    identity: null,
   });
+
+  // ===== NOVO: função que tenta o ping e cai para o antigo comportamento =====
+  async function carregarStatus(ac) {
+    try {
+      // 1) tenta a rota de ping consolidada
+      const rPing = await fetch("/api/mikrotik/ping", { cache: "no-store", signal: ac.signal });
+      if (rPing.ok) {
+        const j = await rPing.json().catch(() => null);
+        if (j) {
+          const mik = j?.ok && j?.connected ? "online" : "offline";
+          const star = j?.internet?.ok ? "online" : "offline";
+          const rtt = j?.internet?.rtt_ms ?? null;
+          const ident = j?.identity ?? null;
+          setStatus({ mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
+          return; // sucesso → não precisa fallback
+        }
+      }
+    } catch { /* continua no fallback */ }
+
+    // 2) Fallback: usa /api/dispositivos/status → /api/dispositivos
+    try {
+      const rDisp =
+        (await fetch(`/api/dispositivos/status`, { cache: "no-store", signal: ac.signal }))
+          .ok
+          ? await fetch(`/api/dispositivos/status`, { cache: "no-store", signal: ac.signal })
+          : await fetch(`/api/dispositivos`, { cache: "no-store", signal: ac.signal });
+
+      if (rDisp.ok) {
+        const j = await rDisp.json();
+        const lista = Array.isArray(j) ? j : j.items ?? [];
+        const anyMikroOnline = lista.some((d) => d?.status === "online" || d?.online === true);
+        const anyStarOnline = lista.some(
+          (d) =>
+            (d?.tipo?.toLowerCase?.() === "starlink" ||
+              d?.nome?.toLowerCase?.().includes("starlink")) &&
+            (d?.status === "online" || d?.online === true)
+        );
+        setStatus((old) => ({
+          ...old,
+          mikrotik: anyMikroOnline ? "online" : "offline",
+          starlink: anyStarOnline ? "online" : "offline",
+        }));
+      }
+    } catch { /* silencia */ }
+  }
 
   useEffect(() => {
     const ac = new AbortController();
@@ -31,13 +78,10 @@ export default function Dashboard() {
         setErro(null);
         setLoading(true);
 
-        const [rDash, rPays, rSess, rDisp] = await Promise.allSettled([
+        const [rDash, rPays, rSess] = await Promise.allSettled([
           fetch(`/api/dashboard?days=30`, { cache: "no-store", signal: ac.signal }),
           fetch(`/api/pagamentos?limit=5&status=pago`, { cache: "no-store", signal: ac.signal }),
           fetch(`/api/sessoes?ativas=true&limit=10`, { cache: "no-store", signal: ac.signal }),
-          // tenta rota agregada de status; se não tiver, cai para /api/dispositivos
-          fetch(`/api/dispositivos/status`, { cache: "no-store", signal: ac.signal })
-            .catch(() => fetch(`/api/dispositivos`, { cache: "no-store", signal: ac.signal })),
         ]);
 
         if (rDash.status === "fulfilled" && rDash.value.ok) {
@@ -46,7 +90,6 @@ export default function Dashboard() {
 
         if (rPays.status === "fulfilled" && rPays.value.ok) {
           const j = await rPays.value.json();
-          // aceita tanto array direto quanto {items:[]}
           setUltimos(Array.isArray(j) ? j : j.items ?? []);
         }
 
@@ -55,20 +98,8 @@ export default function Dashboard() {
           setAcessos(Array.isArray(j) ? j : j.items ?? []);
         }
 
-        if (rDisp.status === "fulfilled" && rDisp.value.ok) {
-          const j = await rDisp.value.json();
-          const lista = Array.isArray(j) ? j : j.items ?? [];
-          const anyMikroOnline = lista.some((d) => d?.status === "online" || d?.online === true);
-          const anyStarOnline = lista.some(
-            (d) =>
-              (d?.tipo?.toLowerCase?.() === "starlink" || d?.nome?.toLowerCase?.().includes("starlink")) &&
-              (d?.status === "online" || d?.online === true)
-          );
-          setStatus({
-            mikrotik: anyMikroOnline ? "online" : "offline",
-            starlink: anyStarOnline ? "online" : "offline",
-          });
-        }
+        // carrega status uma vez
+        await carregarStatus(ac);
       } catch (e) {
         console.error(e);
         setErro("Falha ao carregar dados do dashboard.");
@@ -78,7 +109,14 @@ export default function Dashboard() {
     }
 
     carregar();
-    return () => ac.abort();
+
+    // ===== NOVO: atualiza status periodicamente (15s) =====
+    const t = setInterval(() => carregarStatus(ac), 15000);
+
+    return () => {
+      ac.abort();
+      clearInterval(t);
+    };
   }, []);
 
   // KPIs derivados da /api/dashboard
@@ -184,7 +222,9 @@ export default function Dashboard() {
           {/* Status + últimos pagamentos */}
           <div className="space-y-4">
             <div className="bg-white dark:bg-[#232e47] p-4 rounded-xl shadow transition-colors">
-              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">Starlink</h3>
+              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">
+                Starlink
+              </h3>
               <div className="flex items-center gap-2">
                 <span
                   className={`w-3 h-3 rounded-full ${
@@ -193,6 +233,7 @@ export default function Dashboard() {
                 />
                 <span className="text-gray-700 dark:text-gray-300">
                   {status.starlink ?? "Aguardando…"}
+                  {status.rttMs != null && status.starlink === "online" ? ` • ${status.rttMs} ms` : ""}
                 </span>
               </div>
             </div>
@@ -207,6 +248,7 @@ export default function Dashboard() {
                 />
                 <span className="text-gray-700 dark:text-gray-300">
                   {status.mikrotik ?? "Aguardando…"}
+                  {status.identity ? ` • ${status.identity}` : ""}
                 </span>
               </div>
             </div>

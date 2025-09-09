@@ -18,8 +18,8 @@ model Operador {
   id       String   @id @default(uuid())
   // Login case-insensitive e único (requer extensão CITEXT)
   nome     String   @unique @db.Citext @map("usuario")
-  // Hash de senha (argon2/bcrypt). 128 cobre atual e futuro com folga
-  senha    String   @db.VarChar(128)
+  // Hash de senha (bcrypt/argon2). 255 dá folga pra mudanças futuras
+  senha    String   @db.VarChar(255)
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("createdAt")
 
@@ -84,6 +84,8 @@ model SessaoAtiva {
 
   @@index([ativo])
   @@index([pedidoId])
+  @@index([inicioEm])
+  @@index([expiraEm])
   @@map("sessoes_ativas")
 }
 
@@ -126,7 +128,7 @@ enum ChargeStatus {
 
 model Pedido {
   id            String        @id @default(cuid())
-  code          String        @unique
+  code          String        @unique @db.VarChar(64)
   amount        Int
   method        PaymentMethod
   status        PaymentStatus @default(PENDING)
@@ -157,7 +159,7 @@ model Charge {
   method     PaymentMethod
   qrCode     String?       @db.Text         // Pix copia-e-cola (pode ser longo)
   qrCodeUrl  String?       @db.Text         // URL da imagem (pode ser longa)
-  raw        Json?                         // mantemos somente no DB; não expor via API
+  raw        Json?                          // mantemos somente no DB; não expor via API
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 

@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { listPppActive as listPppActiveLib } from '@/lib/mikrotik';
 import { RouterOSClient } from 'routeros-client';
 
-// helpers ENV (alinha com /ping e /status)
+// helpers ENV (alinha com /status)
 const yes = (v) => ['1', 'true', 'yes', 'on'].includes(String(v ?? '').toLowerCase());
 function getCfg() {
   const host =
@@ -13,19 +13,26 @@ function getCfg() {
     process.env.MIKOTIK_HOST || // fallback p/ typo
     null;
 
-  const user = process.env.MIKROTIK_USER || process.env.MIKROTIK_USERNAME || null;
-  const pass = process.env.MIKROTIK_PASS || process.env.MIKROTIK_PASSWORD || null;
+  const user =
+    process.env.MIKROTIK_USER ||
+    process.env.MIKROTIK_USERNAME ||
+    null;
 
-  const secure = yes(process.env.MIKROTIK_SSL) || yes(process.env.MIKROTIK_SECURE);
+  const password =
+    process.env.MIKROTIK_PASS ||
+    process.env.MIKROTIK_PASSWORD ||
+    null;
+
+  const ssl = yes(process.env.MIKROTIK_SSL) || yes(process.env.MIKROTIK_SECURE);
   const port = Number(
     process.env.MIKROTIK_PORT ||
       process.env.PORTA_MIKROTIK ||
-      (secure ? 8729 : 8728)
+      (ssl ? 8729 : 8728)
   );
 
   const timeout = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
 
-  return { host, user, pass, secure, port, timeout };
+  return { host, user, password, ssl, port, timeout };
 }
 
 function mapRow(x) {
@@ -33,7 +40,7 @@ function mapRow(x) {
     id: x['.id'] || x.id || null,
     name: x.name || null,
     address: x.address || null,          // IP remoto
-    callerId: x['caller-id'] || null,    // MAC/ident
+    callerId: x['caller-id'] || x.callerId || null,
     service: x.service || null,
     uptime: x.uptime || null,
     encoding: x.encoding || null,
@@ -42,16 +49,18 @@ function mapRow(x) {
 
 async function listPppActiveFallback(limit = 200) {
   const cfg = getCfg();
-  if (!cfg.host || !cfg.user || !cfg.pass) {
-    throw new Error('Config Mikrotik ausente (host/user/pass)');
+  if (!cfg.host || !cfg.user || !cfg.password) {
+    throw new Error('Config Mikrotik ausente (host/user/password)');
   }
+
   const api = new RouterOSClient({
     host: cfg.host,
     user: cfg.user,
-    pass: cfg.pass,
+    password: cfg.password, // <- chave correta
     port: cfg.port,
-    secure: cfg.secure,
+    ssl: cfg.ssl,           // <- chave correta
     timeout: cfg.timeout,
+    // rejectUnauthorized: false, // habilite se usar certificado self-signed
   });
 
   await api.connect();
@@ -66,10 +75,11 @@ async function listPppActiveFallback(limit = 200) {
 
 export async function GET(req) {
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '200', 10), 500);
+  const limitRaw = parseInt(url.searchParams.get('limit') || '200', 10);
+  const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 200, 500));
 
   try {
-    // tenta via lib, senão usa fallback direto no RouterOS
+    // tenta via lib; se falhar, usa fallback direto no RouterOS
     let rows = null;
     if (typeof listPppActiveLib === 'function') {
       try { rows = await listPppActiveLib({ limit }); } catch {}

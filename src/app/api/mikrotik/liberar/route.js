@@ -13,19 +13,34 @@ function isValidIp(s) {
   return ipv4.test(s) || ipv6.test(s);
 }
 
+// list: somente [a-zA-Z0-9_-], 1..32
+function sanitizeListName(s) {
+  if (typeof s !== 'string') return undefined;
+  const ok = s.trim();
+  return /^[A-Za-z0-9_-]{1,32}$/.test(ok) ? ok : undefined;
+}
+
+// busId: mantém caracteres seguros e limita tamanho (p/ comment)
+function sanitizeBusId(s) {
+  if (typeof s !== 'string') return undefined;
+  const trimmed = s.trim().slice(0, 64);
+  const safe = trimmed.replace(/[^A-Za-z0-9 _\-.:]/g, '');
+  return safe.length ? safe : undefined;
+}
+
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const ip = (body?.ip || '').trim();
-    const busId = body?.busId || undefined;
-    const list = body?.list || undefined;
+    const busId = sanitizeBusId(body?.busId);
+    const list = sanitizeListName(body?.list); // se inválido, fica undefined (usa default da lib)
 
     if (!ip || !isValidIp(ip)) {
       return NextResponse.json({ ok: false, error: 'IP inválido' }, { status: 400 });
     }
 
     const r = await liberarAcesso({ ip, busId, list });
-    // r já vem como { ok: true, list, ip, id, created }
+    // r: { ok: true, list, ip, id, created }
     return NextResponse.json({ ok: true, ...r }, { status: 200 });
   } catch (e) {
     const msg = String(e?.message || e);

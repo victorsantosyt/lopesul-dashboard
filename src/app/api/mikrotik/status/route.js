@@ -12,14 +12,21 @@ function getCfg() {
     process.env.MIKOTIK_HOST || // fallback p/ typo
     null;
 
-  const user = process.env.MIKROTIK_USER || process.env.MIKROTIK_USERNAME || null;
-  const pass = process.env.MIKROTIK_PASS || process.env.MIKROTIK_PASSWORD || null;
+  const user =
+    process.env.MIKROTIK_USER ||
+    process.env.MIKROTIK_USERNAME ||
+    null;
 
-  const secure = yes(process.env.MIKROTIK_SSL) || yes(process.env.MIKROTIK_SECURE);
+  const password =
+    process.env.MIKROTIK_PASS ||
+    process.env.MIKROTIK_PASSWORD ||
+    null;
+
+  const ssl = yes(process.env.MIKROTIK_SSL) || yes(process.env.MIKROTIK_SECURE);
   const port = Number(
     process.env.MIKROTIK_PORT ||
       process.env.PORTA_MIKROTIK ||
-      (secure ? 8729 : 8728)
+      (ssl ? 8729 : 8728)
   );
 
   const timeout = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
@@ -29,30 +36,33 @@ function getCfg() {
     process.env.LISTA_PAGA_MIKROTIK ||
     'paid_clients';
 
-  return { host, user, pass, secure, port, timeout, defaultList };
+  return { host, user, password, ssl, port, timeout, defaultList };
 }
 
 export async function GET(req) {
   const cfg = getCfg();
-  if (!cfg.host || !cfg.user || !cfg.pass) {
+  if (!cfg.host || !cfg.user || !cfg.password) {
     return NextResponse.json(
-      { ok: false, error: 'Configuração Mikrotik ausente (host/user/pass)' },
+      { ok: false, error: 'Configuração Mikrotik ausente (host/user/password)' },
       { status: 400 }
     );
   }
 
+  let api;
   try {
     const { searchParams } = new URL(req.url);
     const list = searchParams.get('list') || cfg.defaultList;
-    const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10), 200);
+    const limitRaw = parseInt(searchParams.get('limit') || '100', 10);
+    const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 100, 200));
 
-    const api = new RouterOSClient({
+    api = new RouterOSClient({
       host: cfg.host,
       user: cfg.user,
-      pass: cfg.pass,       // chave correta
+      password: cfg.password, // <- chave correta
       port: cfg.port,
-      secure: cfg.secure,   // chave correta
+      ssl: cfg.ssl,           // <- chave correta
       timeout: cfg.timeout,
+      // rejectUnauthorized: false, // se usar cert self-signed
     });
 
     await api.connect();
@@ -68,8 +78,6 @@ export async function GET(req) {
     const raw = await api.menu('/ip/firewall/address-list').print({
       where: [['list', '=', list]],
     });
-
-    await api.close();
 
     const items = (Array.isArray(raw) ? raw : [])
       .slice(0, limit)
@@ -95,6 +103,7 @@ export async function GET(req) {
       { ok: false, error: 'Falha ao consultar status do Mikrotik' },
       { status: 502 }
     );
+  } finally {
+    try { await api?.close(); } catch {}
   }
 }
- 

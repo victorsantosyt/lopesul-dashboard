@@ -13,11 +13,18 @@ function isValidIp(s) {
   return ipv4.test(s) || ipv6.test(s);
 }
 
+// list: somente [a-zA-Z0-9_-], 1..32
+function sanitizeListName(s) {
+  if (typeof s !== 'string') return undefined;
+  const ok = s.trim();
+  return /^[A-Za-z0-9_-]{1,32}$/.test(ok) ? ok : undefined;
+}
+
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const ip = (body?.ip || '').trim();
-    const list = body?.list || undefined;
+    const list = sanitizeListName(body?.list);
 
     if (!ip || !isValidIp(ip)) {
       return NextResponse.json({ ok: false, error: 'IP inválido' }, { status: 400 });

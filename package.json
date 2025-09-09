@@ -13,7 +13,11 @@
     "dev": "next dev",
     "build": "next build",
     "postinstall": "prisma generate",
-    "start": "prisma migrate deploy && next start -p $PORT",
+
+    "prestart": "prisma migrate deploy",
+    "start": "next start -p $PORT",
+
+    "start:local": "next start -p 3000",
 
     "migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",

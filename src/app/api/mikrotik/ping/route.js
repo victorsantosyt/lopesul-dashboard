@@ -25,17 +25,17 @@ function getCfg() {
   );
 
   const timeout = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
+  const tlsInsecure = yes(process.env.MIKROTIK_TLS_INSECURE); // aceita cert self-signed
 
-  return { host, user, pass, secure, port, timeout };
+  return { host, user, pass, secure, port, timeout, tlsInsecure };
 }
 
 async function resolveToIp(host) {
   if (!host) return null;
-  // já é IPv4/IPv6?
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
   try {
     const { address } = await dns.lookup(host);
-    return address; // IPv4/IPv6
+    return address;
   } catch {
     return null;
   }
@@ -51,71 +51,74 @@ export async function GET() {
   }
 
   try {
-    // 1) testa a conexão com o Mikrotik
+    // 1) conecta no MikroTik
     const api = new RouterOSClient({
       host: cfg.host,
       user: cfg.user,
-      pass: cfg.pass,     // <- chave correta
+      password: cfg.pass,        // chave correta
       port: cfg.port,
-      secure: cfg.secure, // <- chave correta
+      ssl: cfg.secure,           // chave correta
       timeout: cfg.timeout,
+      ...(cfg.secure ? { rejectUnauthorized: !cfg.tlsInsecure } : {}),
     });
 
     await api.connect();
 
-    // identity opcional (nome do roteador)
+    // identity (nome do roteador)
     let identity = null;
     try {
       const idRes = await api.menu('/system/identity').print();
       identity = Array.isArray(idRes) && idRes[0]?.name ? idRes[0].name : null;
     } catch {}
+
+    // 2) teste de internet A PARTIR DO MIKROTIK (equivale ao “Starlink OK”)
+    let internet = { ok: false, rtt_ms: null };
+    try {
+      // Nota: em ROS 6, usar /ping ... count=1 (menu '/ping' ou '/tool/ping', ambos funcionam via client)
+      const pong = await api.menu('/ping').once({ address: '1.1.1.1', count: 1 });
+      // Campos variam por versão; tenta extrair RTT/recebidos:
+      const received = Number(pong?.received || pong?.rx || 0);
+      const avgRtt = (pong?.['avg-rtt'] ?? pong?.time ?? pong?.rt ?? null);
+      const rtt = avgRtt ? Number(String(avgRtt).replace('ms','').trim()) : null;
+      internet = { ok: received > 0 || rtt !== null, rtt_ms: rtt };
+    } catch (e) {
+      // se der erro, mantém { ok:false }
+      // console.error('ping upstream error:', e?.message);
+    }
+
     await api.close();
 
-    // 2) garante uma frota para associar o dispositivo
+    // 3) garante um registro de Dispositivo (como você já fazia)
     let frota = await prisma.frota.findFirst();
     if (!frota) {
       frota = await prisma.frota.create({ data: { nome: 'Padrão' } });
     }
-
-    // 3) resolve host -> IP para caber na coluna INET
     const ipInet = await resolveToIp(cfg.host);
-
-    if (!ipInet) {
-      // conectado OK, mas não vamos inserir hostname em coluna INET
-      return NextResponse.json({
-        ok: true,
-        connected: true,
-        note:
-          'Conexão OK, mas não inserido na tabela: host não é IP e DNS não resolveu.',
-        host: cfg.host,
-        port: cfg.port,
-        secure: cfg.secure,
-        identity,
+    if (ipInet) {
+      await prisma.dispositivo.upsert({
+        where: { frotaId_ip: { frotaId: frota.id, ip: ipInet } },
+        update: { atualizadoEm: new Date() },
+        create: { ip: ipInet, frotaId: frota.id },
       });
     }
 
-    // 4) upsert do dispositivo (único por frotaId + ip)
-    await prisma.dispositivo.upsert({
-      where: { frotaId_ip: { frotaId: frota.id, ip: ipInet } },
-      update: { atualizadoEm: new Date() },
-      create: { ip: ipInet, frotaId: frota.id },
-    });
-
     return NextResponse.json({
       ok: true,
-      connected: true,
+      connected: true,        // MikroTik acessível pela API
       host: cfg.host,
       ip: ipInet,
       port: cfg.port,
       secure: cfg.secure,
       identity,
+
+      // “Starlink online” (se o MikroTik só tem Starlink como uplink):
+      internet,               // { ok: boolean, rtt_ms: number|null }
     });
   } catch (e) {
     console.error('GET /api/mikrotik/ping error:', e?.message, e?.stack || e);
-    // resposta genérica ao cliente (sem stack)
     return NextResponse.json(
-      { ok: false, error: 'Falha ao conectar ao Mikrotik' },
-      { status: 502 }
+      { ok: false, connected: false, error: 'Falha ao conectar ao Mikrotik' },
+      { status: 200 } // 200 pra não “quebrar” o dashboard
     );
   }
 }
