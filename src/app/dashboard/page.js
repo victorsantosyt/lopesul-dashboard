@@ -1,6 +1,7 @@
+// src/app/dashboard/page.js
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ProtectedRoute from "../../components/ProtectedRoute";
 
 const fmtBRL = (v) =>
@@ -8,6 +9,58 @@ const fmtBRL = (v) =>
 
 const fmtData = (iso) =>
   new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+
+// ===== Configs =====
+const TTL_MS = 30_000;                   // cache por guia/aba (stale-while-revalidate)
+const DASH_TIMEOUT = 4500;
+const PAYS_TIMEOUT = 4500;
+const SESS_TIMEOUT = 4500;
+const MTK_TIMEOUT = 2500;
+const MTK_POLL_MS = 15_000;
+
+// ===== Helpers =====
+async function fetchJSON(url, { timeoutMs = 4000, signal, cache = "no-store" } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const composite = signal
+    ? new AbortController()
+    : null;
+
+  // encadeia abort externo + interno
+  if (composite && signal) {
+    signal.addEventListener("abort", () => composite.abort(), { once: true });
+  }
+
+  try {
+    const res = await fetch(url, {
+      signal: composite ? composite.signal : ctl.signal,
+      cache,
+    });
+    const data = await res.json().catch(() => null);
+    return { ok: res.ok, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getCache(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const { t, v } = JSON.parse(raw);
+    if (!t) return null;
+    if (Date.now() - t > TTL_MS) return { stale: true, v };
+    return { stale: false, v };
+  } catch {
+    return null;
+  }
+}
+
+function setCache(key, v) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), v }));
+  } catch {}
+}
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -17,7 +70,6 @@ export default function Dashboard() {
   const [ultimos, setUltimos] = useState([]); // /api/pagamentos
   const [acessos, setAcessos] = useState([]); // /api/sessoes
 
-  // ===== NOVO: status e RTT vindos do /api/mikrotik/ping =====
   const [status, setStatus] = useState({
     starlink: null,
     mikrotik: null,
@@ -25,97 +77,134 @@ export default function Dashboard() {
     identity: null,
   });
 
-  // ===== NOVO: função que tenta o ping e cai para o antigo comportamento =====
-  async function carregarStatus(ac) {
+  const mountedRef = useRef(false);
+
+  // ====== STATUS (Mikrotik/Starlink) ======
+  async function carregarStatus(abortSignal) {
+    // 1) tenta a rota consolidada (/api/mikrotik/ping)
     try {
-      // 1) tenta a rota de ping consolidada
-      const rPing = await fetch("/api/mikrotik/ping", { cache: "no-store", signal: ac.signal });
-      if (rPing.ok) {
-        const j = await rPing.json().catch(() => null);
-        if (j) {
-          const mik = j?.ok && j?.connected ? "online" : "offline";
-          const star = j?.internet?.ok ? "online" : "offline";
-          const rtt = j?.internet?.rtt_ms ?? null;
-          const ident = j?.identity ?? null;
-          setStatus({ mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
-          return; // sucesso → não precisa fallback
-        }
+      const r = await fetchJSON("/api/mikrotik/ping", {
+        timeoutMs: MTK_TIMEOUT,
+        signal: abortSignal,
+        cache: "no-store",
+      });
+      if (r?.data) {
+        const j = r.data;
+        const mik = j?.ok && j?.connected ? "online" : "offline";
+        const star = j?.internet?.ok ? "online" : "offline";
+        const rtt = j?.internet?.rtt_ms ?? null;
+        const ident = j?.identity ?? null;
+        setStatus({ mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
+        setCache("dash:status:v1", { mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
+        return;
       }
-    } catch { /* continua no fallback */ }
+    } catch {
+      // segue pro fallback
+    }
 
-    // 2) Fallback: usa /api/dispositivos/status → /api/dispositivos
+    // 2) fallback: /api/dispositivos/status (ou /api/dispositivos)
     try {
-      const rDisp =
-        (await fetch(`/api/dispositivos/status`, { cache: "no-store", signal: ac.signal }))
-          .ok
-          ? await fetch(`/api/dispositivos/status`, { cache: "no-store", signal: ac.signal })
-          : await fetch(`/api/dispositivos`, { cache: "no-store", signal: ac.signal });
+      const rDisp = await fetchJSON("/api/dispositivos/status", {
+        timeoutMs: MTK_TIMEOUT,
+        signal: abortSignal,
+        cache: "no-store",
+      });
 
-      if (rDisp.ok) {
-        const j = await rDisp.json();
-        const lista = Array.isArray(j) ? j : j.items ?? [];
+      let lista = [];
+      if (rDisp?.ok && Array.isArray(rDisp.data)) {
+        lista = rDisp.data;
+      } else {
+        const rAlt = await fetchJSON("/api/dispositivos", {
+          timeoutMs: MTK_TIMEOUT,
+          signal: abortSignal,
+          cache: "no-store",
+        });
+        if (rAlt?.ok) lista = Array.isArray(rAlt.data) ? rAlt.data : (rAlt.data?.items ?? []);
+      }
+
+      if (lista) {
         const anyMikroOnline = lista.some((d) => d?.status === "online" || d?.online === true);
         const anyStarOnline = lista.some(
           (d) =>
             (d?.tipo?.toLowerCase?.() === "starlink" ||
-              d?.nome?.toLowerCase?.().includes("starlink")) &&
+              d?.nome?.toLowerCase?.().includes?.("starlink")) &&
             (d?.status === "online" || d?.online === true)
         );
-        setStatus((old) => ({
-          ...old,
+        const next = {
           mikrotik: anyMikroOnline ? "online" : "offline",
           starlink: anyStarOnline ? "online" : "offline",
-        }));
+          rttMs: null,
+          identity: null,
+        };
+        setStatus(next);
+        setCache("dash:status:v1", next);
       }
-    } catch { /* silencia */ }
+    } catch {
+      // silencia
+    }
   }
 
   useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+
     const ac = new AbortController();
+    setErro(null);
 
-    async function carregar() {
+    // 0) tenta exibir cache imediatamente (se existir)
+    const cDash = getCache("dash:dashboard:v1");
+    const cPays = getCache("dash:ultimos:v1");
+    const cSess = getCache("dash:sessoes:v1");
+    const cSta  = getCache("dash:status:v1");
+
+    if (cDash?.v) setDash(cDash.v);
+    if (cPays?.v) setUltimos(cPays.v);
+    if (cSess?.v) setAcessos(cSess.v);
+    if (cSta?.v)  setStatus((s) => ({ ...s, ...cSta.v }));
+
+    // Se temos qualquer dado em cache, já liberamos o “loading”
+    if (cDash?.v || cPays?.v || cSess?.v) {
+      setLoading(false);
+    }
+
+    // 1) busca em paralelo (com timeouts)
+    (async () => {
       try {
-        setErro(null);
-        setLoading(true);
-
         const [rDash, rPays, rSess] = await Promise.allSettled([
-          fetch(`/api/dashboard?days=30`, { cache: "no-store", signal: ac.signal }),
-          fetch(`/api/pagamentos?limit=5&status=pago`, { cache: "no-store", signal: ac.signal }),
-          fetch(`/api/sessoes?ativas=true&limit=10`, { cache: "no-store", signal: ac.signal }),
+          fetchJSON(`/api/dashboard?days=30`, { timeoutMs: DASH_TIMEOUT, signal: ac.signal, cache: "no-store" }),
+          fetchJSON(`/api/pagamentos?limit=5&status=pago`, { timeoutMs: PAYS_TIMEOUT, signal: ac.signal, cache: "no-store" }),
+          fetchJSON(`/api/sessoes?ativas=true&limit=10`, { timeoutMs: SESS_TIMEOUT, signal: ac.signal, cache: "no-store" }),
         ]);
 
-        if (rDash.status === "fulfilled" && rDash.value.ok) {
-          setDash(await rDash.value.json());
+        if (rDash.status === "fulfilled" && rDash.value?.ok && rDash.value.data) {
+          setDash(rDash.value.data);
+          setCache("dash:dashboard:v1", rDash.value.data);
         }
-
-        if (rPays.status === "fulfilled" && rPays.value.ok) {
-          const j = await rPays.value.json();
-          setUltimos(Array.isArray(j) ? j : j.items ?? []);
+        if (rPays.status === "fulfilled" && rPays.value?.ok) {
+          const lista = Array.isArray(rPays.value.data) ? rPays.value.data : (rPays.value.data?.items ?? []);
+          setUltimos(lista);
+          setCache("dash:ultimos:v1", lista);
         }
-
-        if (rSess.status === "fulfilled" && rSess.value.ok) {
-          const j = await rSess.value.json();
-          setAcessos(Array.isArray(j) ? j : j.items ?? []);
+        if (rSess.status === "fulfilled" && rSess.value?.ok) {
+          const lista = Array.isArray(rSess.value.data) ? rSess.value.data : (rSess.value.data?.items ?? []);
+          setAcessos(lista);
+          setCache("dash:sessoes:v1", lista);
         }
-
-        // carrega status uma vez
-        await carregarStatus(ac);
       } catch (e) {
         console.error(e);
         setErro("Falha ao carregar dados do dashboard.");
       } finally {
         setLoading(false);
       }
-    }
+    })();
 
-    carregar();
-
-    // ===== NOVO: atualiza status periodicamente (15s) =====
-    const t = setInterval(() => carregarStatus(ac), 15000);
+    // 2) carrega status uma vez, depois faz polling
+    carregarStatus(ac.signal);
+    const t = setInterval(() => carregarStatus(ac.signal), MTK_POLL_MS);
 
     return () => {
-      ac.abort();
       clearInterval(t);
+      ac.abort();
     };
   }, []);
 
@@ -222,9 +311,7 @@ export default function Dashboard() {
           {/* Status + últimos pagamentos */}
           <div className="space-y-4">
             <div className="bg-white dark:bg-[#232e47] p-4 rounded-xl shadow transition-colors">
-              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">
-                Starlink
-              </h3>
+              <h3 className="font-semibold mb-2 text-gray-800 dark:text-white">Starlink</h3>
               <div className="flex items-center gap-2">
                 <span
                   className={`w-3 h-3 rounded-full ${
