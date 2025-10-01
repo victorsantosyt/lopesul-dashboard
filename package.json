@@ -38,10 +38,11 @@
     "recharts": "^3.1.0",
     "routeros-client": "^1.1.1",
     "source-map-support": "^0.5.21",
-    "supports-color": "^10.2.2",
     "tailwindcss": "^3.3.0"
+
   },
   "devDependencies": {
-    "prisma": "^6.15.0"
+    "prisma": "^6.15.0",
+    "supports-color": "^10.2.2"
   }
 }

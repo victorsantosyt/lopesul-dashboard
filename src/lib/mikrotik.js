@@ -17,7 +17,7 @@ const HOST =
   envStr('MIKROTIK_HOST',
   envStr('MIKOTIK_HOST',
   envStr('ROUTER_HOST',
-  ''))); // vazio força ver erro mais claro
+  ''))); // vazio força ver erro mais claro no catch
 
 const USER =
   envStr('MIKROTIK_USER',

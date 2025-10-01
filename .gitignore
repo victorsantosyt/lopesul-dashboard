@@ -25,6 +25,3 @@ prisma/*.sqlite
 patch.sql 
 .env
 .env.production
-
-.env
-.env.production
