@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRouter } from "next/navigation"
 
-export default function AdminPagamentosPage() {
+function AdminPagamentosContent() {
   const { isAdmin } = useAuth()
   const router = useRouter()
   const [pagamentos, setPagamentos] = useState([])
@@ -265,5 +265,23 @@ export default function AdminPagamentosPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdminPagamentosPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <AdminPagamentosContent />
+    </Suspense>
   )
 }

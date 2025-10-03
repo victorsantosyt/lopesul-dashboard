@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRouter } from "next/navigation"
 
@@ -19,7 +19,7 @@ const ACOES = [
 
 const ENTIDADES = ["Pedido", "Sessao", "Webhook", "Config", "Operador"]
 
-export default function AuditPage() {
+function AuditContent() {
   const { isAdmin } = useAuth()
   const router = useRouter()
   const [logs, setLogs] = useState([])
@@ -267,5 +267,23 @@ export default function AuditPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AuditPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <AuditContent />
+    </Suspense>
   )
 }

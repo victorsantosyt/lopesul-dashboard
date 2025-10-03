@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 
-export default function PortalPage() {
+function PortalContent() {
   const searchParams = useSearchParams()
   const [ip, setIp] = useState("192.168.88.1")
   const [mac, setMac] = useState("00:11:22:33:44:55")
@@ -205,5 +205,23 @@ export default function PortalPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PortalPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-purple-600 to-purple-900 flex items-center justify-center">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-10">
+            <div className="flex justify-center py-8">
+              <div className="w-12 h-12 border-4 border-gray-300 border-t-purple-600 rounded-full animate-spin" />
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <PortalContent />
+    </Suspense>
   )
 }

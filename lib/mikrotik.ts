@@ -27,6 +27,110 @@ interface LiberarAcessoResult {
   error?: string
 }
 
+export function generateHotspotUsername(paymentId: string): string {
+  return `user-${paymentId.substring(0, 8)}-${Date.now()}`
+}
+
+export function generateHotspotPassword(): string {
+  return Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10)
+}
+
+export function formatDurationForMikrotik(hours: number): string {
+  const totalSeconds = hours * 3600
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+}
+
+export class MikrotikAPI {
+  private async getClient(): Promise<RouterOSClient> {
+    const api = new RouterOSClient({
+      host: MIKROTIK_CONFIG.host,
+      port: MIKROTIK_CONFIG.port,
+      user: MIKROTIK_CONFIG.user,
+      password: MIKROTIK_CONFIG.password,
+      timeout: MIKROTIK_CONFIG.timeout,
+      tls: MIKROTIK_CONFIG.tls,
+    })
+    await api.connect()
+    return api
+  }
+
+  async addHotspotUser(params: {
+    name: string
+    password: string
+    profile: string
+    comment: string
+    "limit-uptime": string
+  }): Promise<string> {
+    const api = await this.getClient()
+    try {
+      const result = await api.menu("/ip/hotspot/user").add(params)
+      await api.close()
+      return result
+    } catch (error) {
+      await api.close()
+      throw error
+    }
+  }
+
+  async removeHotspotUser(userId: string): Promise<void> {
+    const api = await this.getClient()
+    try {
+      await api.menu("/ip/hotspot/user").remove(userId)
+      await api.close()
+    } catch (error) {
+      await api.close()
+      throw error
+    }
+  }
+
+  async addToAllowedList(macAddress: string, comment: string): Promise<string> {
+    const api = await this.getClient()
+    try {
+      const result = await api.menu("/ip/firewall/address-list").add({
+        list: "hotspot-allowed",
+        address: macAddress,
+        comment,
+      })
+      await api.close()
+      return result
+    } catch (error) {
+      await api.close()
+      throw error
+    }
+  }
+
+  async removeFromAllowedList(listId: string): Promise<void> {
+    const api = await this.getClient()
+    try {
+      await api.menu("/ip/firewall/address-list").remove(listId)
+      await api.close()
+    } catch (error) {
+      await api.close()
+      throw error
+    }
+  }
+
+  async disconnectActiveUser(macAddress: string): Promise<void> {
+    const api = await this.getClient()
+    try {
+      const active = await api.menu("/ip/hotspot/active").getAll()
+      const found = active.find((item: any) => item["mac-address"] === macAddress)
+      if (found) {
+        await api.menu("/ip/hotspot/active").remove(found[".id"])
+      }
+      await api.close()
+    } catch (error) {
+      await api.close()
+      throw error
+    }
+  }
+}
+
+export const mikrotikAPI = new MikrotikAPI()
+
 export async function liberarAcesso({
   ip,
   busId,
@@ -155,15 +259,14 @@ export async function liberarClienteNoMikrotik({
       .filter(Boolean)
       .join(" | ")
 
-    const result = await liberarAcesso({
-      ip,
-      busId: comment,
-      list: "hotspot-allowed",
-    })
+    const result = await mikrotikAPI.addToAllowedList(ip, comment)
 
-    return result.ok
+    return true
   } catch (error) {
     console.error("[Mikrotik] Error liberating client:", error)
     return false
   }
 }
+
+export default MikrotikAPI
+export { MikrotikAPI as MikrotikClient }

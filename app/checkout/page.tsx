@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,7 @@ import { QRCodeSVG } from "qrcode.react"
 import { validateDocument, formatDocument } from "@/lib/validators"
 import { RefreshCw, Loader2, CheckCircle2, Clock } from "lucide-react"
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const [plans, setPlans] = useState<any[]>([])
   const [plansLoading, setPlansLoading] = useState(true)
   const [selectedPlan, setSelectedPlan] = useState<any>(null)
@@ -400,5 +400,23 @@ export default function CheckoutPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto p-4 max-w-2xl">
+          <Card>
+            <CardContent className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <CheckoutContent />
+    </Suspense>
   )
 }

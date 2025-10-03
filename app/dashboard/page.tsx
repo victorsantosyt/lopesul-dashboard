@@ -4,6 +4,7 @@ import { AlertTriangle, Database, Play, Settings, CheckCircle } from "lucide-rea
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { AutoSetupButton } from "@/components/dashboard/auto-setup-button"
 
 export default async function DashboardPage() {
   // Por enquanto, assumimos que as tabelas não existem
@@ -33,7 +34,8 @@ export default async function DashboardPage() {
             <strong>🚨 Sistema não configurado!</strong>
             <br />O banco de dados precisa ser inicializado antes de usar o dashboard.
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
+            <AutoSetupButton />
             <Button size="sm" asChild className="bg-orange-600 hover:bg-orange-700">
               <a
                 href="https://supabase.com/dashboard/project/_/sql/new"
@@ -42,7 +44,7 @@ export default async function DashboardPage() {
                 className="inline-flex items-center gap-2"
               >
                 <Database className="h-4 w-4" />
-                Abrir Supabase SQL Editor
+                Abrir Supabase SQL Editor (Manual)
               </a>
             </Button>
             <Button variant="outline" size="sm" asChild>
@@ -59,7 +61,14 @@ export default async function DashboardPage() {
             </div>
             <ol className="list-decimal list-inside space-y-2 ml-6">
               <li>
-                <strong>Abra o Supabase SQL Editor:</strong>
+                <strong>Opção 1 - Automático (Recomendado):</strong>
+                <br />
+                <span className="text-muted-foreground">
+                  Clique no botão verde "Inicializar Banco Automaticamente" acima
+                </span>
+              </li>
+              <li>
+                <strong>Opção 2 - Manual:</strong>
                 <br />
                 <span className="text-muted-foreground">
                   Clique no botão laranja acima ou acesse{" "}
@@ -72,16 +81,6 @@ export default async function DashboardPage() {
                     supabase.com/dashboard
                   </a>
                 </span>
-              </li>
-              <li>
-                <strong>Selecione seu projeto Supabase</strong>
-                <br />
-                <span className="text-muted-foreground">Escolha o projeto conectado a este app</span>
-              </li>
-              <li>
-                <strong>Vá em "SQL Editor" no menu lateral</strong>
-                <br />
-                <span className="text-muted-foreground">Ou clique em "New query"</span>
               </li>
               <li>
                 <strong>Execute os scripts na ordem:</strong>
