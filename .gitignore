@@ -1,30 +1,27 @@
-node_modules
-# Keep environment variables out of version control
-/src/generated/prisma
-.next
-.DS_Store
-# Node / Next
-node_modules/
-.next/
-out/
-dist/
-build/
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# Env / secrets
-.env
-.env.exemple
-.env.*.local
-.nvmrc
-# Prisma
-prisma/dev.db
-prisma/dev.db-journal
-prisma/*.sqlite
-patch.sql 
-.env
-.env.production
+# env files
+.env*
 
-.env
-.env.production
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

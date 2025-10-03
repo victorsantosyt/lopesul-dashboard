@@ -1,6 +1,8 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -9,140 +11,196 @@ datasource db {
 }
 
 model Operador {
-  id       String   @id @default(uuid())
-  nome     String   @unique @map("usuario")
-  senha    String
-  ativo    Boolean  @default(true)
-  criadoEm DateTime @default(now()) @map("createdAt")
-
-  @@map("operadores")
-}
-
-model Frota {
-  id           String        @id @default(uuid())
-  criadoEm     DateTime      @default(now()) @map("createdAt")
-  nome         String?
-  dispositivos Dispositivo[]
-  vendas       Venda[]
-
-  @@index([criadoEm])
-}
-
-model Venda {
-  id        String   @id @default(uuid())
-  frotaId   String
-  data      DateTime @default(now())
-  valorCent Int
-  frota     Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade)
-
-  @@index([frotaId, data])
-}
-
-model Dispositivo {
-  id           String   @id @default(uuid())
-  criadoEm     DateTime @default(now()) @map("createdAt")
-  frotaId      String
-  atualizadoEm DateTime @updatedAt
-  ip           String   @db.Inet
-  frota        Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade)
-
-  @@unique([frotaId, ip])
-  @@index([ip])
-}
-
-model SessaoAtiva {
-  id         String   @id @default(cuid())
-  ipCliente  String   @unique
-  macCliente String?
-  plano      String
-  inicioEm   DateTime @default(now())
-  expiraEm   DateTime
-  ativo      Boolean  @default(true)
-  pedidoId   String?
-  pedido     Pedido?  @relation(fields: [pedidoId], references: [id])
-
-  @@index([ativo])
-  @@index([pedidoId])
-  @@map("sessoes_ativas")
-}
-
-model Config {
-  key       String   @id
-  value     String
+  id        String   @id @default(cuid())
+  nome      String
+  email     String   @unique
+  senha     String
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Pedido {
-  id            String        @id @default(cuid())
-  code          String        @unique
-  amount        Int
-  method        PaymentMethod
-  status        PaymentStatus @default(PENDING)
-  description   String?
-  deviceMac     String?
-  ip            String?       @db.Inet
-  busId         String?
-  customerName  String?
-  customerEmail String?
-  customerDoc   String?
-  metadata      Json?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  charges       Charge[]
-  SessaoAtiva   SessaoAtiva[]
-
-  @@index([status, createdAt])
-  @@index([method, createdAt])
+model Frota {
+  id           String        @id @default(cuid())
+  nome         String
+  placa        String        @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  dispositivos Dispositivo[]
+  vendas       Venda[]
 }
 
-model Charge {
-  id         String        @id @default(cuid())
-  pedidoId   String
-  providerId String?
-  status     ChargeStatus  @default(CREATED)
-  method     PaymentMethod
-  qrCode     String?
-  qrCodeUrl  String?
-  raw        Json?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-
-  @@index([pedidoId])
-  @@index([status, createdAt])
-  @@index([providerId])
+enum TipoDispositivo {
+  MIKROTIK
+  STARLINK
 }
 
-model WebhookLog {
-  id        String   @id @default(cuid())
-  event     String?
-  orderCode String?
-  payload   Json?
-  createdAt DateTime @default(now())
+model Dispositivo {
+  id        String          @id @default(cuid())
+  nome      String
+  tipo      TipoDispositivo
+  ip        String
+  porta     Int?
+  usuario   String?
+  senha     String?
+  frotaId   String
+  frota     Frota           @relation(fields: [frotaId], references: [id], onDelete: Cascade)
+  online    Boolean         @default(false)
+  ultimoPing DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
+  @@index([frotaId])
+}
+
+model Venda {
+  id          String   @id @default(cuid())
+  frotaId     String
+  frota       Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade)
+  valor       Float
+  descricao   String
+  clienteNome String?
+  clienteCpf  String?
+  createdAt   DateTime @default(now())
+
+  @@index([frotaId])
   @@index([createdAt])
-  @@index([event])
 }
 
 enum PaymentStatus {
   PENDING
   PAID
   FAILED
-  CANCELED
   EXPIRED
+  CANCELED
 }
 
 enum PaymentMethod {
   PIX
-  CARD
-  BOLETO
+  CREDIT_CARD
+  DEBIT_CARD
+}
+
+model Pedido {
+  id             String        @id @default(cuid())
+  externalId     String        @unique
+  valor          Float
+  descricao      String
+  clienteNome    String?
+  clienteCpf     String?
+  clienteIp      String?
+  clienteMac     String?
+  status         PaymentStatus @default(PENDING)
+  metodo         PaymentMethod @default(PIX)
+  qrCode         String?
+  qrCodeUrl      String?
+  pixCopiaECola  String?
+  expiresAt      DateTime?
+  paidAt         DateTime?
+  liberadoAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  charges        Charge[]
+  sessaoAtiva    SessaoAtiva?
+
+  @@index([externalId])
+  @@index([status])
+  @@index([clienteIp])
+  @@index([createdAt])
 }
 
 enum ChargeStatus {
-  CREATED
-  AUTHORIZED
+  PENDING
   PAID
-  REFUNDED
   FAILED
   CANCELED
+}
+
+model Charge {
+  id         String       @id @default(cuid())
+  pedidoId   String
+  pedido     Pedido       @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  chargeId   String       @unique
+  status     ChargeStatus @default(PENDING)
+  valor      Float
+  metodo     String
+  paidAt     DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([pedidoId])
+  @@index([chargeId])
+}
+
+model SessaoAtiva {
+  id           String   @id @default(cuid())
+  pedidoId     String   @unique
+  pedido       Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  clienteIp    String
+  clienteMac   String?
+  iniciadaEm   DateTime @default(now())
+  expiraEm     DateTime
+  ativa        Boolean  @default(true)
+  revogadaEm   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([clienteIp])
+  @@index([ativa])
+  @@index([expiraEm])
+}
+
+model WebhookLog {
+  id        String   @id @default(cuid())
+  evento    String
+  payload   String   @db.Text
+  processado Boolean @default(false)
+  erro      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([evento])
+  @@index([processado])
+  @@index([createdAt])
+}
+
+model Config {
+  id                    String   @id @default(cuid())
+  chave                 String   @unique
+  valor                 String
+  descricao             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+enum AuditAction {
+  PAGAMENTO_CRIADO
+  PAGAMENTO_PAGO
+  PAGAMENTO_CANCELADO
+  ACESSO_LIBERADO
+  ACESSO_REVOGADO
+  SESSAO_EXPIRADA
+  WEBHOOK_RECEBIDO
+  LIMPEZA_EXECUTADA
+  LOGIN_ADMIN
+  CONFIGURACAO_ALTERADA
+}
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  acao          AuditAction
+  entidade      String      // Ex: "Pedido", "Sessao", "Webhook"
+  entidadeId    String?     // ID da entidade afetada
+  operadorId    String?     // ID do operador que executou (se aplicável)
+  operadorNome  String?     // Nome do operador
+  detalhes      String?     @db.Text // JSON com detalhes adicionais
+  ipAddress     String?
+  userAgent     String?
+  sucesso       Boolean     @default(true)
+  erro          String?     @db.Text
+  createdAt     DateTime    @default(now())
+
+  @@index([acao])
+  @@index([entidade])
+  @@index([entidadeId])
+  @@index([operadorId])
+  @@index([createdAt])
 }

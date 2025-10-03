@@ -1,179 +1,193 @@
-// src/lib/mikrotik.js
-import { RouterOSClient } from 'routeros-client';
+import { Client as RouterOSClient } from "ssh2"
 
-// ---------- ENV com aliases ----------
-const envStr = (k, fallback=null) => {
-  const v = process.env[k];
-  return (v === undefined || v === null || v === '') ? fallback : String(v);
-};
-const envNum = (k, fallback=null) => {
-  const s = envStr(k, null);
-  if (s === null) return fallback;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : fallback;
-};
-
-const HOST =
-  envStr('MIKROTIK_HOST',
-  envStr('MIKOTIK_HOST',
-  envStr('ROUTER_HOST',
-  ''))); // vazio força ver erro mais claro
-
-const USER =
-  envStr('MIKROTIK_USER',
-  envStr('MIKOTIK_USER',
-  'admin'));
-
-const PASS =
-  envStr('MIKROTIK_PASS',
-  envStr('MIKOTIK_PASS',
-  ''));
-
-const PORT =
-  envNum('MIKROTIK_PORT',
-  envNum('PORTA_MIKROTIK', 8728));
-
-const SSL =
-  (envStr('MIKROTIK_SSL',
-  envStr('MIKOTIK_SSL',
-  PORT === 8729 ? 'true' : 'false')).toLowerCase() === 'true');
-
-const TIMEOUT_MS = envNum('MIKROTIK_TIMEOUT_MS', 8000);
-
-const PAID_LIST =
-  envStr('MIKROTIK_PAID_LIST',
-  envStr('LISTA_PAGA_MIKROTIK',
-  'paid_clients'));
-
-// ---------- Cliente ----------
-function createClient() {
-  if (!HOST) throw new Error('MIKROTIK_HOST não definido');
-  return new RouterOSClient({
-    host: HOST,
-    user: USER,
-    password: PASS,
-    port: PORT,
-    ssl: SSL,
-    timeout: TIMEOUT_MS,
-    // Se usa cert self-signed e quiser ignorar:
-    // rejectUnauthorized: false,
-  });
+const MIKROTIK_CONFIG = {
+  host: process.env.MIKROTIK_HOST,
+  port: Number.parseInt(process.env.MIKROTIK_PORT || "22"),
+  username: process.env.MIKROTIK_USERNAME,
+  password: process.env.MIKROTIK_PASSWORD,
+  readyTimeout: 10000,
+  keepaliveInterval: 10000,
 }
 
-async function withClient(fn) {
-  const client = createClient();
-  try {
-    await client.connect();
-    return await fn(client);
-  } finally {
-    try { await client.close(); } catch {}
+class MikrotikClient {
+  constructor() {
+    this.client = null
+    this.stream = null
+  }
+
+  async connect() {
+    return new Promise((resolve, reject) => {
+      this.client = new RouterOSClient()
+
+      this.client.on("ready", () => {
+        this.client.shell((err, stream) => {
+          if (err) {
+            reject(err)
+            return
+          }
+          this.stream = stream
+
+          let buffer = ""
+          stream.on("data", (data) => {
+            buffer += data.toString()
+          })
+
+          resolve()
+        })
+      })
+
+      this.client.on("error", (err) => {
+        reject(err)
+      })
+
+      this.client.connect(MIKROTIK_CONFIG)
+    })
+  }
+
+  async executeCommand(command) {
+    if (!this.stream) {
+      await this.connect()
+    }
+
+    return new Promise((resolve, reject) => {
+      let output = ""
+
+      const dataHandler = (data) => {
+        output += data.toString()
+      }
+
+      this.stream.on("data", dataHandler)
+
+      this.stream.write(command + "\n")
+
+      setTimeout(() => {
+        this.stream.removeListener("data", dataHandler)
+        resolve(output)
+      }, 2000)
+    })
+  }
+
+  async liberarAcesso(mac, ip, tempo) {
+    try {
+      await this.connect()
+
+      // Adiciona usuário no hotspot
+      const addUserCmd = `/ip hotspot user add name="${mac}" password="" mac-address="${mac}" limit-uptime=${tempo}m profile=default`
+      await this.executeCommand(addUserCmd)
+
+      // Adiciona IP binding
+      const addBindingCmd = `/ip hotspot ip-binding add mac-address="${mac}" address="${ip}" type=bypassed`
+      await this.executeCommand(addBindingCmd)
+
+      console.log(`[Mikrotik] Acesso liberado: MAC=${mac}, IP=${ip}, Tempo=${tempo}min`)
+
+      this.disconnect()
+      return { success: true }
+    } catch (error) {
+      console.error("[Mikrotik] Erro ao liberar acesso:", error)
+      this.disconnect()
+      throw error
+    }
+  }
+
+  async revogarAcesso(mac, ip) {
+    try {
+      await this.connect()
+
+      // Remove usuário do hotspot
+      const removeUserCmd = `/ip hotspot user remove [find name="${mac}"]`
+      await this.executeCommand(removeUserCmd)
+
+      // Remove IP binding
+      const removeBindingCmd = `/ip hotspot ip-binding remove [find mac-address="${mac}"]`
+      await this.executeCommand(removeBindingCmd)
+
+      // Desconecta sessão ativa
+      const disconnectCmd = `/ip hotspot active remove [find mac-address="${mac}"]`
+      await this.executeCommand(disconnectCmd)
+
+      console.log(`[Mikrotik] Acesso revogado: MAC=${mac}, IP=${ip}`)
+
+      this.disconnect()
+      return { success: true }
+    } catch (error) {
+      console.error("[Mikrotik] Erro ao revogar acesso:", error)
+      this.disconnect()
+      throw error
+    }
+  }
+
+  async getActiveSessions() {
+    try {
+      await this.connect()
+
+      const cmd = "/ip hotspot active print detail"
+      const output = await this.executeCommand(cmd)
+
+      // Parse output para extrair sessões ativas
+      const sessions = this.parseActiveSessions(output)
+
+      this.disconnect()
+      return sessions
+    } catch (error) {
+      console.error("[Mikrotik] Erro ao buscar sessões ativas:", error)
+      this.disconnect()
+      throw error
+    }
+  }
+
+  parseActiveSessions(output) {
+    const sessions = []
+    const lines = output.split("\n")
+
+    let currentSession = {}
+
+    for (const line of lines) {
+      if (line.includes("server=")) {
+        if (Object.keys(currentSession).length > 0) {
+          sessions.push(currentSession)
+        }
+        currentSession = {}
+      }
+
+      if (line.includes("user=")) {
+        const match = line.match(/user="([^"]+)"/)
+        if (match) currentSession.user = match[1]
+      }
+
+      if (line.includes("address=")) {
+        const match = line.match(/address=([^\s]+)/)
+        if (match) currentSession.address = match[1]
+      }
+
+      if (line.includes("mac-address=")) {
+        const match = line.match(/mac-address=([^\s]+)/)
+        if (match) currentSession.macAddress = match[1]
+      }
+
+      if (line.includes("uptime=")) {
+        const match = line.match(/uptime=([^\s]+)/)
+        if (match) currentSession.uptime = match[1]
+      }
+    }
+
+    if (Object.keys(currentSession).length > 0) {
+      sessions.push(currentSession)
+    }
+
+    return sessions
+  }
+
+  disconnect() {
+    if (this.stream) {
+      this.stream.end()
+      this.stream = null
+    }
+    if (this.client) {
+      this.client.end()
+      this.client = null
+    }
   }
 }
 
-// ---------- Helpers address-list ----------
-async function findAddressListId(client, { address, list }) {
-  const rows = await client.menu('/ip/firewall/address-list').print({
-    where: [
-      ['address', '=', address],
-      ['list', '=', list],
-    ],
-  });
-  if (Array.isArray(rows) && rows.length) {
-    return rows[0]['.id'] || rows[0].id || null;
-  }
-  return null;
-}
-
-async function addToAddressList(client, { list, address, comment }) {
-  const id = await findAddressListId(client, { address, list });
-  if (id) return { id, created: false };
-  const payload = { list, address };
-  if (comment) payload.comment = comment;
-  const res = await client.menu('/ip/firewall/address-list').add(payload);
-  const newId = res?.ret || res?.id || null;
-  return { id: newId, created: true };
-}
-
-async function removeFromAddressList(client, { list, address }) {
-  const id = await findAddressListId(client, { address, list });
-  if (!id) return { removed: false, reason: 'not_found' };
-  await client.menu('/ip/firewall/address-list').remove({ id });
-  return { removed: true };
-}
-
-// ---------- API pública da lib ----------
-export async function estaPago({ ip, list = PAID_LIST }) {
-  if (!ip) throw new Error('IP é obrigatório');
-  return withClient(async (client) => {
-    const id = await findAddressListId(client, { address: ip, list });
-    return Boolean(id);
-  });
-}
-
-export async function liberarAcesso({ ip, busId, list = PAID_LIST, comment }) {
-  if (!ip) throw new Error('IP é obrigatório');
-  const cmt = comment || (busId ? `pago via Pix - ${busId}` : 'pago via Pix');
-  return withClient(async (client) => {
-    const out = await addToAddressList(client, { list, address: ip, comment: cmt });
-    return { ok: true, list, ip, ...out };
-  });
-}
-
-export async function revogarAcesso({ ip, list = PAID_LIST }) {
-  if (!ip) throw new Error('IP é obrigatório');
-  return withClient(async (client) => {
-    const out = await removeFromAddressList(client, { list, address: ip });
-    return { ok: out.removed, removed: out.removed, list, ip, reason: out.reason || null };
-  });
-}
-
-// PPP Active
-export async function listPppActive({ limit = 100 } = {}) {
-  return withClient(async (client) => {
-    const rows = await client.menu('/ppp/active').print(); // traz tudo
-    const mapped = Array.isArray(rows) ? rows.slice(0, limit).map(r => ({
-      id: r['.id'] || r.id || null,
-      name: r.name || null,
-      address: r.address || null,
-      callerId: r['caller-id'] || r.callerId || null,
-      service: r.service || null,
-      uptime: r.uptime || null,
-    })) : [];
-    return mapped;
-  });
-}
-
-// Status (identity + address-list)
-export async function getStatus({ list = PAID_LIST, limit = 100 } = {}) {
-  return withClient(async (client) => {
-    const identArr = await client.menu('/system/identity').print();
-    const identity = Array.isArray(identArr) && identArr[0]?.name ? identArr[0].name : null;
-
-    const items = await client.menu('/ip/firewall/address-list').print({
-      where: [['list', '=', list]],
-    });
-
-    const mapped = Array.isArray(items) ? items.slice(0, limit).map(r => ({
-      id: r['.id'] || r.id || null,
-      address: r.address || null,
-      comment: r.comment || null,
-      creationTime: r['creation-time'] || r.creationTime || null,
-      disabled: r.disabled === 'true' || r.disabled === true,
-    })) : [];
-
-    return { ok: true, identity, list, items: mapped };
-  });
-}
-
-// Opcional: ping externo (sanity)
-export async function pingRouter() {
-  return withClient(async (client) => {
-    const res = await client.menu('/ping').once({ address: '1.1.1.1', count: 1 });
-    return { ok: true, res };
-  });
-}
-
-/* ===== Compat ===== */
-export async function liberarCliente(...args) { return liberarAcesso(...args); }
-export async function liberarClienteNoMikrotik(...args) { return liberarAcesso(...args); }
-export async function revogarCliente(...args) { return revogarAcesso(...args); }
+export default MikrotikClient
