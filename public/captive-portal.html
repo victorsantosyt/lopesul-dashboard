@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Lopesul - Acesso à Internet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: white;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        h1 {
+            font-size: 28px;
+            color: #1a202c;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            color: #718096;
+            font-size: 16px;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            text-align: left;
+            border: 1px solid #e2e8f0;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #718096;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .info-value {
+            color: #1a202c;
+            font-weight: 600;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #4a5568;
+            border: 2px solid #e2e8f0;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #f7fafc;
+            border-color: #cbd5e0;
+        }
+
+        .plans-preview {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .plans-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
+        .plan-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .plan-item:last-child {
+            border-bottom: none;
+        }
+
+        .plan-name {
+            color: #1a202c;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .plan-price {
+            color: #667eea;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .footer {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #e2e8f0;
+            color: #a0aec0;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .footer-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 8px 0;
+        }
+
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success-message {
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .logo {
+                width: 70px;
+                height: 70px;
+                font-size: 35px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📶</div>
+        <h1>Bem-vindo ao WiFi Lopesul</h1>
+        <p class="subtitle">Conecte-se à internet de forma rápida e segura com pagamento via PIX</p>
+
+        <div class="error-message" id="error-message"></div>
+        <div class="success-message" id="success-message"></div>
+
+        <div class="info-box">
+            <div class="info-item">
+                <span class="info-label">Seu IP:</span>
+                <span class="info-value" id="user-ip">Carregando...</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">MAC Address:</span>
+                <span class="info-value" id="user-mac">Carregando...</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Status:</span>
+                <span class="status-badge status-pending" id="status-badge">
+                    <span class="status-dot" style="background: #f59e0b;"></span>
+                    Aguardando Pagamento
+                </span>
+            </div>
+        </div>
+
+        <div class="plans-preview" id="plans-preview">
+            <div class="plans-title">📋 Planos Disponíveis</div>
+            <div id="plans-list">
+                <div class="spinner" style="width: 30px; height: 30px; margin: 20px auto;"></div>
+            </div>
+        </div>
+
+        <a href="#" class="btn btn-primary" id="btn-checkout">
+            <span>🚀</span>
+            <span>Comprar Acesso à Internet</span>
+        </a>
+
+        <button class="btn btn-secondary" id="btn-verify" onclick="verificarAcessoManual()">
+            <span>🔄</span>
+            <span>Já Paguei - Verificar Acesso</span>
+        </button>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px; color: #718096;">Verificando pagamento...</p>
+        </div>
+
+        <div class="footer">
+            <div class="footer-item">💳 Pagamento via PIX instantâneo</div>
+            <div class="footer-item">⚡ Liberação automática após confirmação</div>
+            <div class="footer-item">🔒 Conexão segura e criptografada</div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+            ? 'http://localhost:3000' 
+            : window.location.origin;
+
+        console.log('[v0] Captive Portal iniciado');
+        console.log('[v0] BASE_URL:', BASE_URL);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let ip = urlParams.get('ip') || '$(ip)';
+        let mac = urlParams.get('mac') || '$(mac)';
+        let linkOrig = urlParams.get('link-orig') || urlParams.get('link_orig') || '$(link-orig)';
+
+        if (ip.includes('$(') || mac.includes('$(')) {
+            const bodyText = document.body.textContent || '';
+            const ipMatch = bodyText.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
+            const macMatch = bodyText.match(/\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b/);
+            
+            if (ipMatch) ip = ipMatch[0];
+            if (macMatch) mac = macMatch[0];
+        }
+
+        if (linkOrig.includes('$(')) {
+            linkOrig = 'https://www.google.com';
+        }
+
+        console.log('[v0] Parâmetros capturados:', { ip, mac, linkOrig });
+        
+        // Atualizar valores na página
+        document.getElementById('user-ip').textContent = ip;
+        document.getElementById('user-mac').textContent = mac;
+
+        const planosDefault = [
+            { name: '1 Hora', price_cents: 500 },
+            { name: '3 Horas', price_cents: 1200 },
+            { name: '6 Horas', price_cents: 2000 },
+            { name: '1 Dia', price_cents: 3500 }
+        ];
+
+        function renderizarPlanos(plans) {
+            const plansList = document.getElementById('plans-list');
+            if (!plans || plans.length === 0) {
+                plansList.innerHTML = '<p style="text-align: center; color: #718096; font-size: 13px;">Nenhum plano disponível</p>';
+                return;
+            }
+
+            plansList.innerHTML = plans.slice(0, 4).map(plan => `
+                <div class="plan-item">
+                    <span class="plan-name">${plan.name}</span>
+                    <span class="plan-price">R$ ${(plan.price_cents / 100).toFixed(2)}</span>
+                </div>
+            `).join('');
+        }
+
+        async function carregarPlanos() {
+            console.log('[v0] Iniciando carregamento de planos...');
+            const plansList = document.getElementById('plans-list');
+            
+            try {
+                const url = `${BASE_URL}/api/plans`;
+                console.log('[v0] Fazendo fetch para:', url);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+                
+                const response = await fetch(url, { 
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                clearTimeout(timeoutId);
+                
+                console.log('[v0] Response status:', response.status);
+                console.log('[v0] Response headers:', Object.fromEntries(response.headers.entries()));
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error(`Resposta não é JSON: ${contentType}`);
+                }
+                
+                const data = await response.json();
+                console.log('[v0] Data recebida:', JSON.stringify(data, null, 2));
+
+                if (data.success && data.plans && Array.isArray(data.plans) && data.plans.length > 0) {
+                    renderizarPlanos(data.plans);
+                    console.log('[v0] ✅ Planos carregados com sucesso:', data.plans.length);
+                } else {
+                    console.warn('[v0] ⚠️ Resposta sem planos válidos, usando fallback');
+                    renderizarPlanos(planosDefault);
+                }
+            } catch (error) {
+                console.error('[v0] ❌ Erro ao carregar planos:', error);
+                console.error('[v0] Error type:', error.constructor.name);
+                console.error('[v0] Error message:', error.message);
+                console.error('[v0] Error stack:', error.stack);
+                
+                console.log('[v0] Usando planos padrão como fallback');
+                renderizarPlanos(planosDefault);
+            }
+        }
+
+        document.getElementById('btn-checkout').addEventListener('click', function(e) {
+            e.preventDefault();
+            const checkoutUrl = `${BASE_URL}/checkout?ip=${encodeURIComponent(ip)}&mac=${encodeURIComponent(mac)}&redirect=${encodeURIComponent(linkOrig)}`;
+            console.log('[v0] Redirecionando para checkout:', checkoutUrl);
+            window.location.href = checkoutUrl;
+        });
+
+        async function verificarAcessoManual() {
+            const loading = document.getElementById('loading');
+            const btnVerify = document.getElementById('btn-verify');
+            const errorMsg = document.getElementById('error-message');
+            const successMsg = document.getElementById('success-message');
+
+            loading.style.display = 'block';
+            btnVerify.disabled = true;
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/mikrotik/check-access?mac=${encodeURIComponent(mac)}`);
+                const data = await response.json();
+
+                console.log('[v0] Verificação de acesso:', data);
+
+                if (data.hasAccess) {
+                    successMsg.textContent = '✅ Pagamento confirmado! Redirecionando...';
+                    successMsg.style.display = 'block';
+                    
+                    // Atualizar status visual
+                    const statusBadge = document.getElementById('status-badge');
+                    statusBadge.className = 'status-badge status-active';
+                    statusBadge.innerHTML = '<span class="status-dot" style="background: #10b981;"></span>Acesso Liberado';
+
+                    setTimeout(() => {
+                        window.location.href = linkOrig;
+                    }, 2000);
+                } else {
+                    errorMsg.textContent = '⏳ Pagamento ainda não confirmado. Aguarde alguns segundos após o pagamento.';
+                    errorMsg.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('[v0] Erro ao verificar acesso:', error);
+                errorMsg.textContent = '❌ Erro ao verificar pagamento. Tente novamente.';
+                errorMsg.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+                btnVerify.disabled = false;
+            }
+        }
+
+        let autoCheckInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`${BASE_URL}/api/mikrotik/check-access?mac=${encodeURIComponent(mac)}`);
+                const data = await response.json();
+
+                if (data.hasAccess) {
+                    clearInterval(autoCheckInterval);
+                    console.log('[v0] Acesso liberado automaticamente');
+                    
+                    const successMsg = document.getElementById('success-message');
+                    successMsg.textContent = '✅ Pagamento confirmado! Redirecionando...';
+                    successMsg.style.display = 'block';
+
+                    setTimeout(() => {
+                        window.location.href = linkOrig;
+                    }, 1500);
+                }
+            } catch (error) {
+                // Silencioso - não mostrar erro no auto-check
+                console.error('[v0] Erro no auto-check:', error);
+            }
+        }, 10000); // 10 segundos
+
+        carregarPlanos();
+
+        window.addEventListener('beforeunload', () => {
+            clearInterval(autoCheckInterval);
+        });
+    </script>
+</body>
+</html>

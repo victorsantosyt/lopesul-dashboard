@@ -33,21 +33,55 @@ export default async function DashboardPage() {
             <strong>🚨 Sistema não configurado!</strong>
             <br />O banco de dados precisa ser inicializado antes de usar o dashboard.
           </div>
+          <div className="flex gap-3">
+            <Button size="sm" asChild className="bg-orange-600 hover:bg-orange-700">
+              <a
+                href="https://supabase.com/dashboard/project/_/sql/new"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2"
+              >
+                <Database className="h-4 w-4" />
+                Abrir Supabase SQL Editor
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href="/checkout" className="inline-flex items-center gap-2">
+                <Play className="h-4 w-4" />
+                Testar checkout (funciona sem banco)
+              </a>
+            </Button>
+          </div>
           <div className="bg-muted p-4 rounded-lg text-sm space-y-3">
             <div className="flex items-center gap-2 font-semibold">
-              <Play className="h-4 w-4" />
-              Passos para configuração:
+              <Database className="h-4 w-4" />
+              Passos para configurar:
             </div>
             <ol className="list-decimal list-inside space-y-2 ml-6">
               <li>
-                <strong>Abra as configurações do projeto:</strong>
+                <strong>Abra o Supabase SQL Editor:</strong>
                 <br />
-                <span className="text-muted-foreground">Clique no ícone de engrenagem ⚙️ no canto superior direito</span>
+                <span className="text-muted-foreground">
+                  Clique no botão laranja acima ou acesse{" "}
+                  <a
+                    href="https://supabase.com/dashboard"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    supabase.com/dashboard
+                  </a>
+                </span>
               </li>
               <li>
-                <strong>Acesse a seção "Scripts":</strong>
+                <strong>Selecione seu projeto Supabase</strong>
                 <br />
-                <span className="text-muted-foreground">Selecione "Scripts" no menu lateral</span>
+                <span className="text-muted-foreground">Escolha o projeto conectado a este app</span>
+              </li>
+              <li>
+                <strong>Vá em "SQL Editor" no menu lateral</strong>
+                <br />
+                <span className="text-muted-foreground">Ou clique em "New query"</span>
               </li>
               <li>
                 <strong>Execute os scripts na ordem:</strong>
@@ -67,21 +101,16 @@ export default async function DashboardPage() {
                     <code className="bg-background px-2 py-1 rounded text-xs">scripts/003_setup_rls_policies.sql</code>
                   </div>
                 </div>
+                <div className="text-xs text-muted-foreground mt-2">
+                  💡 Copie o conteúdo de cada arquivo da pasta <code>/scripts</code> e cole no SQL Editor
+                </div>
               </li>
               <li>
                 <strong>Recarregue esta página</strong>
                 <br />
-                <span className="text-muted-foreground">Após executar os scripts, atualize o dashboard</span>
+                <span className="text-muted-foreground">Após executar os 3 scripts, atualize o dashboard</span>
               </li>
             </ol>
-            <div className="pt-2 border-t">
-              <Button variant="outline" size="sm" asChild>
-                <a href="/checkout" className="inline-flex items-center gap-2">
-                  <Play className="h-4 w-4" />
-                  Testar página de checkout (funciona sem banco)
-                </a>
-              </Button>
-            </div>
           </div>
         </AlertDescription>
       </Alert>

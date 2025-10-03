@@ -71,9 +71,40 @@ const SIMULATION_MODE =
   !PAGAR_ME_CONFIG.apiKey ||
   PAGAR_ME_CONFIG.apiKey.length < 20
 
+function validateApiKey(): { valid: boolean; error?: string } {
+  if (!PAGAR_ME_CONFIG.apiKey) {
+    return { valid: false, error: "PAGAR_ME_API_KEY não configurada" }
+  }
+
+  // Check if using public key instead of secret key
+  if (PAGAR_ME_CONFIG.apiKey.startsWith("pk_")) {
+    return {
+      valid: false,
+      error:
+        "ERRO: Você está usando a PUBLIC KEY (pk_). Para criar pedidos, use a SECRET KEY (sk_test_6dd001b1f0d544f6bc57d8a90403485a)",
+    }
+  }
+
+  // Check if using secret key
+  if (!PAGAR_ME_CONFIG.apiKey.startsWith("sk_")) {
+    return {
+      valid: false,
+      error: "ERRO: A chave da API deve começar com 'sk_test_' ou 'sk_live_'",
+    }
+  }
+
+  return { valid: true }
+}
+
 // Função para criar pedido no Pagar.me
 export async function createPagarMeOrder(orderData: PagarMeOrder): Promise<PagarMeOrderResponse> {
-  const isTestKey = PAGAR_ME_CONFIG.apiKey?.startsWith("sk_")
+  const keyValidation = validateApiKey()
+  if (!keyValidation.valid) {
+    console.error("[v0] API Key validation failed:", keyValidation.error)
+    throw new Error(keyValidation.error)
+  }
+
+  const isTestKey = PAGAR_ME_CONFIG.apiKey?.startsWith("sk_test_")
   console.log("[v0] Pagar.me API Key exists:", !!PAGAR_ME_CONFIG.apiKey)
   console.log("[v0] Pagar.me API Key length:", PAGAR_ME_CONFIG.apiKey?.length || 0)
   console.log("[v0] Pagar.me API Key prefix:", PAGAR_ME_CONFIG.apiKey?.substring(0, 5) || "none")
@@ -112,7 +143,7 @@ export async function createPagarMeOrder(orderData: PagarMeOrder): Promise<Pagar
             const errors = charge.last_transaction.gateway_response.errors
             const errorMessages = errors.map((e: any) => e.message).join(", ")
             console.log("[v0] Order failed with errors:", errorMessages)
-            throw new Error(errorMessages)
+            throw new Error(`Erro do Pagar.me: ${errorMessages}`)
           }
         }
 
@@ -145,8 +176,9 @@ export async function createPagarMeOrder(orderData: PagarMeOrder): Promise<Pagar
       } else if (response.status === 401) {
         const errorText = await response.text()
         console.log("[v0] Auth failed (401), response:", errorText)
-        console.log("[v0] Falling back to simulation mode")
-        // Fall through to simulation
+        throw new Error(
+          "Autenticação falhou. Verifique se você está usando a SECRET KEY (sk_test_...) e não a PUBLIC KEY (pk_test_...)",
+        )
       } else {
         const error = await response.text()
         console.log("[v0] Pagar.me error response (status " + response.status + "):", error)

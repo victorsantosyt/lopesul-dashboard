@@ -31,6 +31,16 @@ export default function CheckoutPage() {
   const [timeUntilNextCheck, setTimeUntilNextCheck] = useState(10)
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const mac = params.get("mac")
+    const ip = params.get("ip")
+
+    if (mac) {
+      setFormData((prev) => ({ ...prev, macAddress: mac }))
+    }
+  }, [])
+
+  useEffect(() => {
     const cachedPlans = localStorage.getItem("hotspot_plans")
     const cacheTime = localStorage.getItem("hotspot_plans_time")
     const now = Date.now()
@@ -124,8 +134,12 @@ export default function CheckoutPage() {
         console.error("[v0] Checkout error:", data.error)
         if (data.error?.includes("Invalid CPF") || data.error?.includes("Invalid CNPJ")) {
           setDocumentError("CPF ou CNPJ inválido. Por favor, verifique o número digitado.")
+        } else if (data.error?.includes("Sem ambiente configurado")) {
+          alert(
+            "Erro de configuração: PIX não está habilitado na sua conta Pagar.me. Acesse o dashboard do Pagar.me e habilite o método de pagamento PIX.",
+          )
         } else {
-          alert(data.error || "Erro ao criar pagamento")
+          alert(data.error || "Erro ao criar pagamento no Pagar.me. Tente novamente.")
         }
       }
     } catch (error) {

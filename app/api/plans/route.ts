@@ -53,6 +53,9 @@ function getDefaultPlansResponse() {
     },
     {
       headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
       },
     },
@@ -86,6 +89,9 @@ export async function GET(request: NextRequest) {
       { success: true, plans },
       {
         headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
         },
       }
@@ -95,4 +101,15 @@ export async function GET(request: NextRequest) {
     return getDefaultPlansResponse()
   }
   */
+}
+
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  })
 }

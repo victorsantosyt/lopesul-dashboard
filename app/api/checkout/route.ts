@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
     }
 
     const orderCode = `HOTSPOT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const mikrotikUsername = `user-${Date.now()}`
+    const mikrotikUsername = macAddress
     const mikrotikPassword = Math.random().toString(36).substr(2, 12)
 
-    console.log("[v0] Creating Pagar.me order for:", customerEmail)
+    console.log("[v0] Creating Pagar.me order for:", customerEmail, "MAC:", macAddress)
 
     let pagarMeOrder
     try {
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
 
       if (!paymentError && payment) {
         paymentId = payment.id
-        console.log("[v0] Payment saved to database:", paymentId)
+        console.log("[v0] Payment saved to database:", paymentId, "MAC:", macAddress)
 
         await supabase.from("system_logs").insert({
           level: "info",
