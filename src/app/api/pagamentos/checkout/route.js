@@ -73,12 +73,13 @@ export async function POST(req) {
     });
 
     const j = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: j?.error || `HTTP ${upstream.status}` },
-        { status: upstream.status }
-      );
-    }
+if (!upstream.ok) {
+  console.error("Erro PIX interno:", j);   // <<< add log
+  return NextResponse.json(
+    { error: j?.error || `HTTP ${upstream.status}` },
+    { status: upstream.status }
+  );
+}
 
     // Resposta no formato esperado pelo seu frontend
     return NextResponse.json({

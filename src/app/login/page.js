@@ -5,7 +5,33 @@ import { useState, useEffect, useRef } from "react";
 function getNextPath() {
   if (typeof window === "undefined") return "/dashboard";
   const sp = new URLSearchParams(window.location.search);
-  return sp.get("next") || "/dashboard";
+  const nextRaw = sp.get("next") || "";
+
+  // Decodifica com tolerância a erros
+  let next = "";
+  try {
+    next = decodeURIComponent(nextRaw).trim();
+  } catch {
+    next = (nextRaw || "").trim();
+  }
+
+  // Permite SOMENTE caminhos internos relativos seguros.
+  // Regras:
+  // - deve começar com "/" (apenas uma barra inicial)
+  // - NÃO pode começar com "//" (protocol-relative externo)
+  // - NÃO pode começar com "/api" (evita navegação para rotas de API)
+  // - deve conter apenas caracteres de URL permitidos
+  if (
+    !next ||
+    next[0] !== "/" ||
+    next.startsWith("//") ||
+    next.startsWith("/api") ||
+    !/^\/[A-Za-z0-9\-._~\/%?#[\]@!$&'()*+,;=]*$/.test(next)
+  ) {
+    return "/dashboard";
+  }
+
+  return next;
 }
 
 export default function LoginPage() {
@@ -55,9 +81,8 @@ export default function LoginPage() {
         className="w-full max-w-sm rounded-2xl bg-slate-800/90 ring-1 ring-inset ring-white/10 shadow-xl px-6 py-6 space-y-4 backdrop-blur-sm transition-colors"
       >
         <h1 className="text-2xl font-bold text-slate-900 dark:text-gray-100">
-  Olá Operador
-</h1>
-
+          Olá Operador
+        </h1>
 
         <div className="space-y-1">
           <label className="text-sm text-slate-300">Usuário</label>

@@ -134,6 +134,32 @@
       let nomeCli = get("nome") || get("name") || "Cliente";
       let docCli  = get("doc")  || get("document") || "";
 
+      // --------- SANITIZAÇÃO / REDIRECT SEGURO ---------
+      function safeRedirectUrl(raw) {
+        try {
+          if (!raw) return null;
+          const decoded = decodeURIComponent(raw);
+          // Rejeita esquemas perigosos
+          if (/^\s*javascript:/i.test(decoded) || /^\s*data:/i.test(decoded)) return null;
+
+          const base = location.origin;
+          const u = new URL(decoded, base);
+
+          // Permite mesma origem
+          if (u.origin === base) return u.href;
+
+          // Permite apenas o health-check do captive
+          const allow = ['https://clients3.google.com', 'http://clients3.google.com'];
+          if (allow.some((p) => u.href.startsWith(p + '/generate_204'))) return u.href;
+
+          // Caso contrário, bloqueia
+          return null;
+        } catch {
+          return null;
+        }
+      }
+      // -----------------------------------------------
+
       // estados
       let REF = null; // externalId
       let tempoLivre = 120;
@@ -158,7 +184,7 @@
             if (++tries > 120) {
               const s = document.getElementById('status');
               s.className = 'pill err';
-              s.innerText = '⚠️ Falha ao carregar QRious. Verifique /captive/vendor/qrious.min.js';
+              s.textContent = '⚠️ Falha ao carregar QRious. Verifique /captive/vendor/qrious.min.js';
               return reject(new Error("QRious não carregou"));
             }
             setTimeout(tick, 50);
@@ -170,11 +196,11 @@
       waitForQRious().then(() => {
         try {
           new QRious({ element: document.getElementById('qrcode'), value: 'READY', size: 160, background: 'white', foreground: 'black' });
-          document.getElementById("pix-code").innerText = 'READY';
+          document.getElementById("pix-code").textContent = 'READY';
           setTimeout(()=>{
             const ctx = document.getElementById('qrcode')?.getContext('2d');
             ctx && ctx.clearRect(0,0,220,220);
-            document.getElementById("pix-code").innerText = '';
+            document.getElementById("pix-code").textContent = '';
           }, 800);
         } catch(e) { console.error('QRious teste falhou:', e); }
       }).catch(()=>{ /* ignore */ });
@@ -204,16 +230,16 @@
         limparFluxo();
         elCheckout.style.display = 'none';
         elEscolha.style.display  = 'block';
-        document.getElementById('pix-code').innerText = '';
+        document.getElementById('pix-code').textContent = '';
         const ctx = document.getElementById('qrcode')?.getContext('2d');
         ctx && ctx.clearRect(0,0,220,220);
         document.getElementById('status').className = 'pill info';
-        document.getElementById('status').innerText = '🔄 Aguardando pagamento...';
+        document.getElementById('status').textContent = '🔄 Aguardando pagamento...';
         document.getElementById('timer').className = 'pill warn';
-        document.getElementById('timer').innerText = '⏰ Tempo livre: 2:00';
+        document.getElementById('timer').textContent = '⏰ Tempo livre: 2:00';
         // reseta form
         elCliErro.style.display = 'none';
-        elCliErro.innerText = '';
+        elCliErro.textContent = '';
       }
 
       function limparFluxo() {
@@ -225,14 +251,14 @@
       function iniciarTimer() {
         const el = document.getElementById('timer');
         const fmt = (t) => `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
-        el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+        el.textContent = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
         timerHandle = setInterval(() => {
           tempoLivre = Math.max(tempoLivre-1, 0);
-          el.innerText = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+          el.textContent = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
           if (tempoLivre === 0) {
             clearInterval(timerHandle);
             el.className = 'pill err';
-            el.innerText = '⏰ Tempo esgotado! Faça o pagamento para continuar.';
+            el.textContent = '⏰ Tempo esgotado! Faça o pagamento para continuar.';
           }
         }, 1000);
       }
@@ -253,7 +279,7 @@
               limparFluxo();
               const s = document.getElementById('status');
               s.className = 'pill ok';
-              s.innerHTML = '✅ Pagamento confirmado! Liberando acesso...';
+              s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
 
               try {
                 await fetch(`${API}/api/liberar-acesso`, {
@@ -263,19 +289,37 @@
                 });
               } catch {}
 
+              // ===== Redirecionamento com validação de protocolo http/https =====
               setTimeout(() => {
                 try {
-                  const url = linkOrig ? decodeURIComponent(linkOrig) : 'http://clients3.google.com/generate_204';
-                  location.href = url;
-                } catch { location.href = '/'; }
+                  const fallback = 'http://clients3.google.com/generate_204';
+                  const candidate = safeRedirectUrl(linkOrig) || fallback;
+
+                  let target = '/';
+                  try {
+                    const u = new URL(candidate, window.location.origin);
+                    if (u.protocol === 'http:' || u.protocol === 'https:') {
+                      target = u.href;
+                    } else {
+                      target = fallback;
+                    }
+                  } catch {
+                    target = fallback;
+                  }
+
+                  window.location.href = target;
+                } catch {
+                  window.location.href = '/';
+                }
               }, 1200);
+              // ==================================================================
             }
 
             if (status === 'expirado' || status === 'cancelado') {
               limparFluxo();
               const s = document.getElementById('status');
               s.className = 'pill err';
-              s.innerText = status === 'expirado'
+              s.textContent = status === 'expirado'
                 ? '⏳ Pagamento expirado. Gere um novo QR.'
                 : '❌ Pagamento cancelado.';
             }
@@ -290,13 +334,13 @@
         elCheckout.style.display = 'block';
 
         tempoLivre = Number(minutos) || 120;
-        document.getElementById('desc-plano').innerText =
+        document.getElementById('desc-plano').textContent =
           `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
         const setErro = (msg) => {
           const s = document.getElementById('status');
           s.className = 'pill err';
-          s.innerText = msg;
+          s.textContent = msg;
         };
 
         // se faltar DOC, mostra form para coletar e só depois gera o QR
@@ -307,12 +351,12 @@
 
           elBtnGerar.onclick = async () => {
             elCliErro.style.display = 'none';
-            elCliErro.innerText = '';
+            elCliErro.textContent = '';
             const n  = (elCliNome.value || '').trim() || 'Cliente';
             const d0 = onlyDigits(elCliDoc.value);
             if (!d0 || (d0.length !== 11 && d0.length !== 14)) {
               elCliErro.style.display = 'block';
-              elCliErro.innerText = 'Informe CPF (11 dígitos) ou CNPJ (14 dígitos).';
+              elCliErro.textContent = 'Informe CPF (11 dígitos) ou CNPJ (14 dígitos).';
               return;
             }
             nomeCli = n;
@@ -357,7 +401,7 @@
 
           // QR + copia e cola
           await waitForQRious();
-          document.getElementById("pix-code").innerText = copiaECola;
+          document.getElementById("pix-code").textContent = copiaECola;
           new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
 
           iniciarTimer();
@@ -369,13 +413,13 @@
       }
 
       window.copiarPix = function() {
-        const code = document.getElementById('pix-code').innerText;
+        const code = document.getElementById('pix-code').textContent;
         if (!code) return;
         navigator.clipboard.writeText(code).then(() => {
           const s = document.getElementById('status');
-          const orig = s.innerHTML;
-          s.innerHTML = '📋 Código Pix copiado!';
-          setTimeout(() => s.innerHTML = orig, 1800);
+          const orig = s.textContent;
+          s.textContent = '📋 Código Pix copiado!';
+          setTimeout(() => { s.textContent = orig; }, 1800);
         });
       }
     });

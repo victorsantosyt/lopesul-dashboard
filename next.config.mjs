@@ -8,11 +8,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   // Alias @ -> src
   webpack: (config) => {
-    config.resolve.alias["@"] = path.resolve(process.cwd(), "src");
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@": path.resolve(process.cwd(), "src"),
+    };
     return config;
   },
 
-  // Fixa a raiz do projeto pra evitar lockfile fora interferir
+  // Evita que o tracing considere diretórios fora do projeto
   outputFileTracingRoot: path.join(__dirname),
 
   // 🔁 Rewrites para abrir o captive sem .html
@@ -26,26 +29,22 @@ const nextConfig = {
   // 🧾 Headers de cache
   async headers() {
     return [
-      // Não guardar cache da página de pagamento
+      // Nunca cachear a página do pagamento
       {
         source: "/pagamento.html",
-        headers: [
-          { key: "Cache-Control", value: "no-store, max-age=0" },
-        ],
+        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
       },
-      // Cache longo para assets do captive (CSS/JS/imagens)
+      // Cache longo para assets do captive
       {
         source: "/captive/:path*",
         headers: [
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
-      // Cache padrão para /assets (se você usa logos, etc.)
+      // Cache padrão para /assets
       {
         source: "/assets/:path*",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=604800" }, // 7 dias
-        ],
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],
       },
     ];
   },

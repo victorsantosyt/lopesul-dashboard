@@ -2,8 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-function iso(d) { return new Date(d).toISOString().slice(0, 10); }
-function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+// ===== helpers de data (LOCAL, não UTC) =====
+function yyyymmddLocal(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function addDays(d, n) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
 function fmtTempo(min) {
   if (min == null) return "—";
   const h = Math.floor(min / 60);
@@ -22,20 +33,21 @@ export default function AcessosPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const now = useMemo(() => new Date(), []);
   const { from, to } = useMemo(() => {
-    const t = new Date();
-    let f = addDays(t, -1);
+    const now = new Date();
+    let f = addDays(now, -1);
     switch (range) {
       case "hoje": {
-        const start = new Date(); start.setHours(0, 0, 0, 0);
-        f = start; break;
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        f = start;
+        break;
       }
-      case "semana": f = addDays(t, -7); break;
-      case "mes": f = addDays(t, -30); break;
-      default: f = addDays(t, -1);
+      case "semana": f = addDays(now, -7); break;
+      case "mes": f = addDays(now, -30); break;
+      default: f = addDays(now, -1);
     }
-    return { from: f, to: t };
+    return { from: f, to: now };
   }, [range]);
 
   const fetchingRef = useRef(false);
@@ -45,11 +57,17 @@ export default function AcessosPage() {
       if (fetchingRef.current) return;
       fetchingRef.current = true;
       setLoading(true);
-      const url = `/api/sessoes?from=${iso(from)}&to=${iso(to)}`;
-      const res = await fetch(url, { cache: "no-store", signal });
-      const data = await res.json();
 
-      // Esperado da API: [{ id, ipCliente, macCliente, plano, inicioEm, expiraEm, ativo, nome? }]
+      const params = new URLSearchParams();
+      params.set("from", yyyymmddLocal(from));
+      params.set("to", yyyymmddLocal(to));
+      // se quiser só ativas, descomente:
+      // params.set("ativas", "true");
+
+      const res = await fetch(`/api/sessoes?${params.toString()}`, { cache: "no-store", signal });
+      const j = await res.json().catch(() => ({}));
+      const data = Array.isArray(j) ? j : (j.items ?? j.data ?? []);
+
       if (Array.isArray(data)) {
         const nowLocal = new Date();
         const mapped = data.map((s) => {
@@ -87,16 +105,14 @@ export default function AcessosPage() {
     const controller = new AbortController();
     loadData(controller.signal);
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
   // auto-refresh
   useEffect(() => {
     if (!autoRefresh) return;
     const controller = new AbortController();
-    const iv = setInterval(() => loadData(controller.signal), 15000); // 15s
+    const iv = setInterval(() => loadData(controller.signal), 15000);
     return () => { controller.abort(); clearInterval(iv); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, from, to]);
 
   const filtered = useMemo(() => {
@@ -112,7 +128,7 @@ export default function AcessosPage() {
   async function encerrar(id) {
     if (!confirm("Encerrar esta sessão agora?")) return;
     try {
-      const res = await fetch(`/api/sessoes/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/sessoes/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Falha ao encerrar");
       // feedback otimista
       setRows(prev => prev.map(r => r.id === id ? { ...r, status: "Inativo", tempo: "—" } : r));
@@ -131,7 +147,7 @@ export default function AcessosPage() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `acessos_${iso(from)}_${iso(to)}.csv`;
+    a.href = url; a.download = `acessos_${yyyymmddLocal(from)}_${yyyymmddLocal(to)}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }

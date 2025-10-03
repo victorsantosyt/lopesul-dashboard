@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Wifi } from 'lucide-react';
 
 export default function DispositivosPage() {
   const [dispositivos, setDispositivos] = useState([]);
@@ -29,11 +31,26 @@ export default function DispositivosPage() {
 
   return (
     <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#1a2233] min-h-screen transition-colors">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">
-        Painel Técnico - Dispositivos
-      </h1>
+      {/* Cabeçalho + botão Status */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
+          Painel Técnico - Dispositivos
+        </h1>
 
-      <h2 className="text-xl font-semibold mt-6 mb-3 text-gray-800 dark:text-white">
+        <Link
+          href="/dispositivos/status"
+          className="inline-flex items-center gap-2 rounded-lg px-3 py-2
+                     bg-blue-600 text-white hover:bg-blue-700
+                     focus:outline-none focus:ring-2 focus:ring-blue-400"
+          aria-label="Ver Status do Mikrotik"
+          title="Ver Status do Mikrotik"
+        >
+          <Wifi className="h-5 w-5" />
+          <span className="hidden sm:inline">Ver Status</span>
+        </Link>
+      </div>
+
+      <h2 className="text-xl font-semibold mt-2 mb-3 text-gray-800 dark:text-white">
         Dispositivos Cadastrados
       </h2>
 
@@ -68,7 +85,7 @@ export default function DispositivosPage() {
                 </p>
               </div>
 
-              {/* Espaço para ações (editar/remover etc.) */}
+              {/* Espaço para ações futuras */}
               {/* <div className="flex gap-2">
                 <button className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white">Editar</button>
                 <button className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Remover</button>

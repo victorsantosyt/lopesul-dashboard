@@ -10,7 +10,7 @@ datasource db {
 
 model Operador {
   id       String   @id @default(uuid())
-  nome     String   @unique @map("usuario") // mantém mapeamento existente
+  nome     String   @unique @map("usuario")
   senha    String
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now()) @map("createdAt")
@@ -31,23 +31,21 @@ model Frota {
 model Venda {
   id        String   @id @default(uuid())
   frotaId   String
-  valorCent Int
   data      DateTime @default(now())
-  frota     Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  valorCent Int
+  frota     Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade)
 
-  // consultas por frota ordenadas por data
   @@index([frotaId, data])
 }
 
 model Dispositivo {
   id           String   @id @default(uuid())
-  ip           String   @db.Inet // valida IPv4/IPv6 no Postgres
   criadoEm     DateTime @default(now()) @map("createdAt")
-  atualizadoEm DateTime @updatedAt
   frotaId      String
-  frota        Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  atualizadoEm DateTime @updatedAt
+  ip           String   @db.Inet
+  frota        Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade)
 
-  // impede IP duplicado dentro da MESMA frota
   @@unique([frotaId, ip])
   @@index([ip])
 }
@@ -60,10 +58,8 @@ model SessaoAtiva {
   inicioEm   DateTime @default(now())
   expiraEm   DateTime
   ativo      Boolean  @default(true)
-
-  // relacionamento agora é com Pedido
-  pedidoId String?
-  pedido   Pedido? @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  pedidoId   String?
+  pedido     Pedido?  @relation(fields: [pedidoId], references: [id])
 
   @@index([ativo])
   @@index([pedidoId])
@@ -76,9 +72,58 @@ model Config {
   updatedAt DateTime @updatedAt
 }
 
-//
-// 🔥 Modelos para integração Pagar.me
-//
+model Pedido {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  amount        Int
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  description   String?
+  deviceMac     String?
+  ip            String?       @db.Inet
+  busId         String?
+  customerName  String?
+  customerEmail String?
+  customerDoc   String?
+  metadata      Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  charges       Charge[]
+  SessaoAtiva   SessaoAtiva[]
+
+  @@index([status, createdAt])
+  @@index([method, createdAt])
+}
+
+model Charge {
+  id         String        @id @default(cuid())
+  pedidoId   String
+  providerId String?
+  status     ChargeStatus  @default(CREATED)
+  method     PaymentMethod
+  qrCode     String?
+  qrCodeUrl  String?
+  raw        Json?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@index([pedidoId])
+  @@index([status, createdAt])
+  @@index([providerId])
+}
+
+model WebhookLog {
+  id        String   @id @default(cuid())
+  event     String?
+  orderCode String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([event])
+}
+
 enum PaymentStatus {
   PENDING
   PAID
@@ -100,56 +145,4 @@ enum ChargeStatus {
   REFUNDED
   FAILED
   CANCELED
-}
-
-model Pedido {
-  id            String        @id @default(cuid())
-  code          String        @unique
-  amount        Int
-  method        PaymentMethod
-  status        PaymentStatus @default(PENDING)
-  description   String?
-  deviceMac     String?
-  ip            String?       @db.Inet // consistente com Dispositivo/ip
-  busId         String?
-  customerName  String?
-  customerEmail String?
-  customerDoc   String?
-  metadata      Json?
-  charges       Charge[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  SessaoAtiva   SessaoAtiva[]
-
-  @@index([status, createdAt])
-  @@index([method, createdAt])
-}
-
-model Charge {
-  id         String        @id @default(cuid())
-  pedidoId   String
-  pedido     Pedido        @relation(fields: [pedidoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  providerId String? // id da charge no Pagar.me
-  status     ChargeStatus  @default(CREATED)
-  method     PaymentMethod
-  qrCode     String? // Pix copia-e-cola
-  qrCodeUrl  String? // Pix imagem
-  raw        Json?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-
-  @@index([pedidoId])
-  @@index([status, createdAt])
-  @@index([providerId])
-}
-
-model WebhookLog {
-  id        String   @id @default(cuid())
-  event     String?
-  orderCode String?
-  payload   Json?
-  createdAt DateTime @default(now())
-
-  @@index([createdAt])
-  @@index([event])
 }

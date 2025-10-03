@@ -11,10 +11,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="pt-br" suppressHydrationWarning>
-      <body className="min-h-screen antialiased
-                       bg-[#F0F6FA] text-slate-900
-                       dark:bg-[#0f172a] dark:text-slate-100">
-          <AuthProvider>
+      <body
+        className="min-h-screen overflow-x-hidden antialiased
+                   bg-[#F0F6FA] text-slate-900
+                   dark:bg-[#0f172a] dark:text-slate-100"
+      >
+        <AuthProvider>
           <ThemeProvider>
             <LayoutWrapper>{children}</LayoutWrapper>
           </ThemeProvider>
