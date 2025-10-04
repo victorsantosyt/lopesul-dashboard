@@ -56,6 +56,16 @@ export async function revogarCliente(options = {}) {
 export async function liberarClienteNoMikrotik(options = {}) {
   return liberarAcesso(options);
 }
+ // === Named exports explícitos ===
+export {
+  getStarlinkStatus,
+  revogarAcesso,
+  liberarAcesso,
+  liberarCliente,
+  listPppActive,
+  revogarCliente,            // alias
+  liberarClienteNoMikrotik,  // alias
+};
 
 // === Export default ===
 export default {
