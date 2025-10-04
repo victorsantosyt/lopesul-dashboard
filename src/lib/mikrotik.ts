@@ -1,3 +1,5 @@
+// src/lib/mikrotik.ts
+
 export function getMikrotikEnv() {
   const yes = (v?: string) => ['1','true','yes','on'].includes((v||'').toLowerCase());
   const host = process.env.MIKROTIK_HOST || process.env.MIKOTIK_HOST; // fallback p/ typo
@@ -15,5 +17,4 @@ export function getMikrotikEnv() {
 }
 
 // Re-exporta tudo do .js para garantir compatibilidade de named-exports
-export * from './mikrotik.js';
-
+export * from "./mikrotik.js";

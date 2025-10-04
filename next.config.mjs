@@ -6,19 +6,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Alias @ -> src
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
+    // Alias @ -> src
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
       "@": path.resolve(process.cwd(), "src"),
     };
+
+    // ⛔ Evita que o Next tente empacotar módulos nativos
+    if (isServer) {
+      const asCommonJs = {
+        ssh2: "commonjs ssh2",
+        "node-ssh": "commonjs node-ssh",
+      };
+      // mantém qualquer externals já existentes e adiciona os nossos
+      if (Array.isArray(config.externals)) {
+        config.externals.push(asCommonJs);
+      } else {
+        config.externals = [config.externals, asCommonJs].filter(Boolean);
+      }
+    }
+
     return config;
   },
 
-  // Evita que o tracing considere diretórios fora do projeto
   outputFileTracingRoot: path.join(__dirname),
 
-  // 🔁 Rewrites para abrir o captive sem .html
   async rewrites() {
     return [
       { source: "/pagamentos", destination: "/pagamento.html" },
@@ -26,22 +39,18 @@ const nextConfig = {
     ];
   },
 
-  // 🧾 Headers de cache
   async headers() {
     return [
-      // Nunca cachear a página do pagamento
       {
         source: "/pagamento.html",
         headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
       },
-      // Cache longo para assets do captive
       {
         source: "/captive/:path*",
         headers: [
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
-      // Cache padrão para /assets
       {
         source: "/assets/:path*",
         headers: [{ key: "Cache-Control", value: "public, max-age=604800" }],

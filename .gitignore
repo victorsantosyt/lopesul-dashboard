@@ -1,27 +1,49 @@
-node_modules
-# Keep environment variables out of version control
-/src/generated/prisma
-.next
-.DS_Store
-# Node / Next
+# =========================
+# Node / Next.js
+# =========================
 node_modules/
 .next/
 out/
 dist/
 build/
+
+# =========================
+# Logs
+# =========================
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+*.log
 
-# Env / secrets
+# =========================
+# Sistema / OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Ambiente / Secrets
+# =========================
 .env
-.env.exemple
+.env.local
 .env.*.local
+.env.production
+.env.example
 .nvmrc
-# Prisma
+
+# =========================
+# Prisma / Banco local
+# =========================
+/src/generated/prisma
 prisma/dev.db
 prisma/dev.db-journal
 prisma/*.sqlite
-patch.sql 
-.env
-.env.production
+patch.sql
+
+# =========================
+# Arquivos temporários / backup
+# =========================
+*.bak
+*.tmp
+*.swp
