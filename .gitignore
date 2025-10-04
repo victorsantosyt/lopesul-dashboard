@@ -47,3 +47,4 @@ patch.sql
 *.bak
 *.tmp
 *.swp
+.env.local
