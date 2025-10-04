@@ -13,3 +13,7 @@ export function getMikrotikEnv() {
     timeout,
   };
 }
+
+// Re-exporta tudo do .js para garantir compatibilidade de named-exports
+export * from './mikrotik.js';
+
