@@ -6,6 +6,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    allowedOrigins: ['*'],
+  },
+  
   webpack: (config, { isServer }) => {
     // Alias @ -> src
     config.resolve.alias = {

@@ -56,7 +56,11 @@ export async function POST(req) {
       : undefined;
 
     // Encaminha para /api/payments/pix (centavos)
-    const url = new URL("/api/payments/pix", req.url);
+    // Usa a mesma origem do request para compatibilidade com desenvolvimento e produção
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? req.url 
+      : "http://localhost:5000";
+    const url = new URL("/api/payments/pix", baseUrl);
     const upstream = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -89,6 +93,7 @@ if (!upstream.ok) {
       expiresIn: j?.pix?.expires_in ?? null,
     });
   } catch (e) {
+    console.error("[CHECKOUT] Erro:", e.message);
     return NextResponse.json({ error: String(e?.message || e) }, { status: 400 });
   }
 }
