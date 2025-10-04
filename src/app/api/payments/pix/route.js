@@ -18,9 +18,13 @@ export async function POST(req) {
       ],
       customer: {
         name: body.customer.name,
+        // Email é obrigatório pela API Pagar.me. Usa valor default se não fornecido
+        // TODO: Coletar email real do cliente no frontend
         email: body.customer.email || "cliente@lopesul.com.br",
         document: body.customer.document,
         type: body.customer.document.length === 14 ? "corporation" : "individual",
+        // Telefone é obrigatório pela API Pagar.me. Usa valor default se não fornecido
+        // TODO: Coletar telefone real do cliente no frontend
         phones: {
           mobile_phone: {
             country_code: "55",

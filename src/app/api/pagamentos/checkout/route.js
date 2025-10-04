@@ -56,7 +56,11 @@ export async function POST(req) {
       : undefined;
 
     // Encaminha para /api/payments/pix (centavos)
-    const url = new URL("/api/payments/pix", "http://localhost:5000");
+    // Usa a mesma origem do request para compatibilidade com desenvolvimento e produção
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? req.url 
+      : "http://localhost:5000";
+    const url = new URL("/api/payments/pix", baseUrl);
     const upstream = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
