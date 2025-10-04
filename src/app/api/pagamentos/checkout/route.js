@@ -56,7 +56,7 @@ export async function POST(req) {
       : undefined;
 
     // Encaminha para /api/payments/pix (centavos)
-    const url = new URL("/api/payments/pix", req.url);
+    const url = new URL("/api/payments/pix", "http://localhost:5000");
     const upstream = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -89,6 +89,7 @@ if (!upstream.ok) {
       expiresIn: j?.pix?.expires_in ?? null,
     });
   } catch (e) {
+    console.error("[CHECKOUT] Erro:", e.message);
     return NextResponse.json({ error: String(e?.message || e) }, { status: 400 });
   }
 }
