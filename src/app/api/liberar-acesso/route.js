@@ -1,23 +1,23 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// src/app/api/liberar-acesso/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { liberarCliente } from "@/lib/mikrotik";
+// ajuste: importa default e desestrutura
+import mikrotik from "@/lib/mikrotik";
+const { liberarCliente } = mikrotik;
 
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
 
-    // aceita múltiplas formas de identificar o pagamento
     const {
-      externalId,     // referência do PSP (preferido no fluxo novo)
-      pagamentoId,    // id interno (cuid/uuid) – opcional
-      txid,           // txid Pix – opcional
-      ip,             // pode sobrescrever IP salvo
-      mac,            // pode sobrescrever MAC salvo
-      linkOrig,       // para redirecionar o cliente depois
+      externalId,
+      pagamentoId,
+      txid,
+      ip,
+      mac,
+      linkOrig,
     } = body || {};
 
     if (!externalId && !pagamentoId && !txid) {
@@ -27,7 +27,6 @@ export async function POST(req) {
       );
     }
 
-    // 1) localizar o pagamento pela melhor chave disponível
     let pagamento = null;
 
     if (externalId) {
@@ -44,21 +43,17 @@ export async function POST(req) {
       return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });
     }
 
-    // 2) se ainda não está marcado como pago, marque agora
     if (pagamento.status !== "pago") {
       await prisma.pagamento.update({
         where: { id: pagamento.id },
         data: { status: "pago" },
       });
-      // recarrega apenas o necessário
       pagamento = { ...pagamento, status: "pago" };
     }
 
-    // 3) define IP/MAC finais (body tem prioridade; depois registro)
     const ipFinal  = ip  || pagamento.clienteIp  || null;
     const macFinal = mac || pagamento.clienteMac || null;
 
-    // 4) chama a lib do Mikrotik (address-list / PPPoE – conforme sua implementação)
     const lib = await liberarCliente({
       ip: ipFinal || undefined,
       mac: macFinal || undefined,

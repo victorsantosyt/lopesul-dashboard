@@ -1,10 +1,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// src/app/api/revogar-acesso/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { revogarCliente } from "@/lib/mikrotik";
+// ajuste: importa default e desestrutura
+import mikrotik from "@/lib/mikrotik";
+const { revogarCliente } = mikrotik;
 
 export async function POST(req) {
   try {
@@ -25,7 +26,6 @@ export async function POST(req) {
       );
     }
 
-    // 1) localizar pagamento (se houver chave)
     let pg = null;
     if (externalId) {
       pg = await prisma.pagamento.findUnique({ where: { externalId } });
@@ -37,7 +37,6 @@ export async function POST(req) {
       pg = await prisma.pagamento.findFirst({ where: { txid } });
     }
 
-    // 2) determinar IP/MAC finais
     const ipFinal  = ip  || pg?.clienteIp  || null;
     const macFinal = mac || pg?.clienteMac || null;
 
@@ -45,10 +44,8 @@ export async function POST(req) {
       return NextResponse.json({ error: "IP/MAC não fornecidos e não encontrados." }, { status: 400 });
     }
 
-    // 3) remover no Mikrotik (resolverá IP via MAC se preciso)
     const rm = await revogarCliente({ ip: ipFinal || undefined, mac: macFinal || undefined });
 
-    // 4) marcar pagamento como expirado/cancelado (se localizamos pg)
     if (pg) {
       const novoStatus = statusFinal === "cancelado" ? "cancelado" : "expirado";
       await prisma.pagamento.update({
@@ -56,7 +53,6 @@ export async function POST(req) {
         data: { status: novoStatus },
       });
 
-      // 5) encerrar sessões ativas associadas
       try {
         await prisma.sessaoAtiva.updateMany({
           where: { pagamentoId: pg.id, ativo: true },

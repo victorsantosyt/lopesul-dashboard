@@ -2,7 +2,9 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { liberarClienteNoMikrotik } from "@/lib/mikrotik";
+// ⬇️ trocar named import por default + desestruturação
+import mikrotik from "@/lib/mikrotik";
+const { liberarClienteNoMikrotik } = mikrotik;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,18 +130,16 @@ async function markPaidAndRelease(orderCode) {
 
 export async function POST(req) {
   try {
-    // 1) Leia corpo BRUTO para validar assinatura corretamente
     const raw = await req.text();
     const sig =
       req.headers.get("x-hub-signature") ||
-      req.headers.get("x-postbacks-signature") || // compat legada
+      req.headers.get("x-postbacks-signature") ||
       "";
 
     if (!verifyPagarmeSignature(raw, sig)) {
       return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
     }
 
-    // 2) Parse JSON após validar
     const evt = JSON.parse(raw);
     const basics = extractBasics(evt);
     const mapped = mapStatus({
@@ -148,7 +148,6 @@ export async function POST(req) {
       chargeStatus: basics.chargeStatus,
     });
 
-    // 3) Log básico de auditoria (opcional)
     try {
       await prisma.webhookLog.create({
         data: {
@@ -157,9 +156,8 @@ export async function POST(req) {
           payload: evt,
         },
       });
-    } catch { /* não quebra webhook por falha de log */ }
+    } catch {}
 
-    // 4) Atualiza Pedido pelo code (se soubermos)
     if (basics.orderCode) {
       await prisma.pedido.updateMany({
         where: { code: basics.orderCode },
@@ -167,7 +165,6 @@ export async function POST(req) {
       });
     }
 
-    // 5) Atualiza/Cria Charge sem depender de índice unique
     if (basics.chargeId) {
       const existing = await prisma.charge.findFirst({
         where: { providerId: basics.chargeId },
@@ -188,7 +185,6 @@ export async function POST(req) {
           data: common,
         });
       } else {
-        // tenta vincular ao pedido via code
         let pedidoConnect = undefined;
         if (basics.orderCode) {
           const p = await prisma.pedido.findFirst({ where: { code: basics.orderCode }, select: { id: true } });
@@ -204,16 +200,12 @@ export async function POST(req) {
       }
     }
 
-    // 6) Libera Mikrotik ao confirmar pagamento
     if (mapped === "PAID" && basics.orderCode) {
       await markPaidAndRelease(basics.orderCode);
     }
 
-    // 7) Responda 2xx rápido (Pagar.me reenvia em 5xx/timeout)
     return NextResponse.json({ ok: true });
   } catch (err) {
-    // Em produção você pode optar por 200 para não gerar reentrega infinita,
-    // mas manteremos 500 enquanto ajusta logs.
     return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
   }
 }

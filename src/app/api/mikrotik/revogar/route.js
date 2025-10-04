@@ -2,7 +2,9 @@
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-import { revogarAcesso } from '@/lib/mikrotik';
+// ajuste: importa default e desestrutura
+import mikrotik from '@/lib/mikrotik';
+const { revogarAcesso } = mikrotik;
 
 const ipv4 =
   /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;

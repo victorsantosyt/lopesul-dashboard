@@ -2,7 +2,9 @@
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-import { listPppActive as listPppActiveLib } from '@/lib/mikrotik';
+// ajuste: importa default e desestrutura
+import mikrotik from '@/lib/mikrotik';
+const { listPppActive: listPppActiveLib } = mikrotik;
 import { RouterOSClient } from 'routeros-client';
 
 // helpers ENV (alinha com /status)
@@ -78,7 +80,6 @@ export async function GET(req) {
   const limitRaw = parseInt(url.searchParams.get('limit') || '200', 10);
   const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 200, 500));
 
-  // 🔒 se faltar env, responde 200 + ok:false (não polui o log)
   const cfg = getCfg();
   if (!cfg.host || !cfg.user || !cfg.password) {
     return NextResponse.json(
@@ -88,7 +89,6 @@ export async function GET(req) {
   }
 
   try {
-    // tenta via lib; se falhar, usa fallback direto no RouterOS
     let rows = null;
     if (typeof listPppActiveLib === 'function') {
       try { rows = await listPppActiveLib({ limit }); } catch {}
@@ -98,7 +98,6 @@ export async function GET(req) {
     return NextResponse.json({ ok: true, count: rows.length, rows }, { status: 200 });
   } catch (e) {
     console.error('GET /api/mikrotik/ppp-active error:', e?.message, e?.stack || e);
-    // Mantém 200 + ok:false para não quebrar o dashboard
     return NextResponse.json(
       { ok: false, rows: [], error: 'Falha ao consultar PPP Active' },
       { status: 200 }
