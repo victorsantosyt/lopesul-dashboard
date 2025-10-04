@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+  <title>Pagamento Pix - Lopesul Wi-Fi</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/captive/style.css?v=7">
+
+  <!-- QRious local (com defer) + fallback CDN -->
+  <script src="/captive/vendor/qrious.min.js" defer
+          onerror="(function(){
+            var s=document.createElement('script');
+            s.src='https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js';
+            s.defer=true;
+            document.head.appendChild(s);
+          })();">
+  </script>
+
+  <style>
+    :root{
+      --azul-fundo:#1d3a5a; --azul-botao:#2b79c2; --azul-botao-hover:#2066a6;
+      --verde:#63b245; --verde-hover:#529737;
+      --card:#ffffff; --sombra:0 20px 40px rgba(0,0,0,.08);
+    }
+    body{ margin:0; background:var(--azul-fundo); color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; }
+    .wrap{ min-height:100dvh; display:flex; align-items:flex-start; justify-content:center; padding:36px 16px; }
+    .card{ width:100%; max-width:840px; background:transparent; text-align:center; }
+    .logo{ width:280px; max-width:70%; height:auto; margin:8px auto 8px; display:block; }
+    h1{ margin:10px 0 6px; font-size:40px; font-weight:800; letter-spacing:.2px; }
+    .bus{ width:360px; max-width:80%; height:auto; margin:10px auto 18px; display:block; }
+    .cta{ display:inline-block; background:var(--verde); color:#fff; border-radius:26px; padding:12px 18px; font-weight:800; margin:6px 0 18px; }
+    .cta:hover{ background:var(--verde-hover); }
+    .grid-planos{ display:flex; gap:18px; justify-content:center; flex-wrap:wrap; }
+    .btn-plano{ background:var(--azul-botao); color:#fff; border:none; border-radius:14px; padding:14px 22px; width:160px; font-weight:800; cursor:pointer; box-shadow:var(--sombra); }
+    .btn-plano:hover{ background:var(--azul-botao-hover); }
+    .btn-plano .preco{ display:block; font-size:20px; }
+    .btn-plano .duracao{ display:block; font-size:18px; opacity:.95; }
+
+    .checkout{ max-width:520px; margin:0 auto; background:var(--card); color:#222; border-radius:20px; box-shadow:var(--sombra); padding:20px; display:none; }
+    .title-ch{ color:#0a73c0; font-weight:800; font-size:22px; margin:6px 0 2px; }
+    .sub-ch{ color:#334; margin-bottom:8px; }
+    .qr{ display:flex; justify-content:center; margin:12px 0 }
+    .code{ background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; font-size:12px; color:#666; max-height:90px; overflow:auto; word-break:break-all }
+    .btn{ width:100%; background:#0a73c0; color:#fff; border:0; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:10px }
+    .btn:hover{ background:#085fa0 }
+    .pill{ margin-top:10px; border-radius:8px; padding:10px; font-weight:700; border:1px solid }
+    .pill.warn{ background:#fff3cd; border-color:#ffeaa7; color:#856404 }
+    .pill.info{ background:#d1ecf1; border-color:#bee5eb; color:#0c5460 }
+    .pill.ok{ background:#d4edda; border-color:#c3e6cb; color:#155724 }
+    .pill.err{ background:#f8d7da; border-color:#f5c6cb; color:#721c24 }
+    .back{ display:inline-block; margin-top:8px; font-size:.95rem; color:#0a73c0; cursor:pointer }
+
+    .rodape{ margin-top:26px; opacity:.9 }
+    .rodape img{ height:42px; width:auto; }
+
+    /* form cliente minimalista */
+    .row{ display:flex; gap:10px; }
+    .row > * { flex:1 }
+    .inp{ width:100%; border:1px solid #dee2e6; border-radius:10px; padding:10px 12px; font-size:14px; }
+    .hint{ font-size:12px; color:#666; margin-top:6px }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="view-escolha">
+      <img class="logo" src="/assets/logo-header.png" alt="Lopesul Next">
+      <h1>Acesso Wi-Fi</h1>
+      <img class="bus" src="/assets/logo-onibus.png" alt="Ônibus Lopesul">
+
+      <a class="cta">Escolha seu pacote de internet</a>
+
+      <div class="grid-planos">
+        <button class="btn-plano" data-id="12h" data-valor="9.90"  data-desc="Acesso 12h">
+          <span class="preco">R$9,90</span><span class="duracao">12h</span>
+        </button>
+        <button class="btn-plano" data-id="24h" data-valor="14.90" data-desc="Acesso 24h">
+          <span class="preco">R$14,90</span><span class="duracao">24h</span>
+        </button>
+        <button class="btn-plano" data-id="48h" data-valor="19.90" data-desc="Acesso 48h">
+          <span class="preco">R$19,90</span><span class="duracao">48h</span>
+        </button>
+      </div>
+
+      <div class="rodape">
+        <img src="/assets/logo-footer.png" alt="Connect - desenvolvedor">
+      </div>
+    </div>
+
+    <!-- ETAPA 2: CHECKOUT PIX -->
+    <div id="view-checkout" class="checkout">
+      <div class="title-ch">Pagamento via Pix</div>
+      <div class="sub-ch" id="desc-plano"></div>
+
+      <!-- FORM do cliente (mostra apenas se faltar doc) -->
+      <div id="cliente-form" style="display:none; text-align:left; margin:12px 0 6px;">
+        <div class="row">
+          <input id="cli-nome" class="inp" placeholder="Nome completo" autocomplete="name">
+          <input id="cli-doc" class="inp" placeholder="CPF ou CNPJ (somente números)" inputmode="numeric" autocomplete="off" maxlength="18">
+        </div>
+        <div class="hint">Obrigatório para gerar o QR Code Pix.</div>
+        <button class="btn" id="btn-gerar-pix">Gerar QR Pix</button>
+        <div class="pill err" id="cli-erro" style="display:none"></div>
+        <hr style="margin:14px 0; border:none; border-top:1px solid #eee">
+      </div>
+
+      <div class="qr">
+        <canvas id="qrcode" width="220" height="220"></canvas>
+      </div>
+
+      <div class="code" id="pix-code"></div>
+      <button class="btn" onclick="copiarPix()">📋 Copiar código Pix</button>
+
+      <div class="pill warn" id="timer">⏰ Tempo livre: 2:00</div>
+      <div class="pill info" id="status">🔄 Aguardando pagamento...</div>
+
+      <span class="back" id="btn-voltar">← escolher outro plano</span>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const API = ""; // mesmo domínio
+
+      // --- helpers URL/Mikrotik ---
+      const get = (n) => new URLSearchParams(location.search).get(n);
+      const mac = get("mac") || null;
+      const ip = get("ip") || null;
+      const roteador = get("roteador") || null;
+      const linkOrig = get("link_orig") || get("link-orig") || "";
+
+      // ► cliente por URL (se vier): ?nome=Fulano&doc=00000000000
+      let nomeCli = get("nome") || get("name") || "Cliente";
+      let docCli  = get("doc")  || get("document") || "";
+
+      // --------- SANITIZAÇÃO / REDIRECT SEGURO ---------
+      function safeRedirectUrl(raw) {
+        try {
+          if (!raw) return null;
+          const decoded = decodeURIComponent(raw);
+          // Rejeita esquemas perigosos
+          if (/^\s*javascript:/i.test(decoded) || /^\s*data:/i.test(decoded)) return null;
+
+          const base = location.origin;
+          const u = new URL(decoded, base);
+
+          // Permite mesma origem
+          if (u.origin === base) return u.href;
+
+          // Permite apenas o health-check do captive
+          const allow = ['https://clients3.google.com', 'http://clients3.google.com'];
+          if (allow.some((p) => u.href.startsWith(p + '/generate_204'))) return u.href;
+
+          // Caso contrário, bloqueia
+          return null;
+        } catch {
+          return null;
+        }
+      }
+      // -----------------------------------------------
+
+      // estados
+      let REF = null; // externalId
+      let tempoLivre = 120;
+      let pollingHandle = null;
+      let timerHandle = null;
+
+      const elEscolha  = document.getElementById('view-escolha');
+      const elCheckout = document.getElementById('view-checkout');
+
+      const elClienteForm = document.getElementById('cliente-form');
+      const elCliNome = document.getElementById('cli-nome');
+      const elCliDoc  = document.getElementById('cli-doc');
+      const elCliErro = document.getElementById('cli-erro');
+      const elBtnGerar = document.getElementById('btn-gerar-pix');
+
+      // ==== Wait QRious ====
+      function waitForQRious(){
+        return new Promise((resolve, reject)=>{
+          let tries = 0;
+          (function tick(){
+            if (window.QRious) return resolve();
+            if (++tries > 120) {
+              const s = document.getElementById('status');
+              s.className = 'pill err';
+              s.textContent = '⚠️ Falha ao carregar QRious. Verifique /captive/vendor/qrious.min.js';
+              return reject(new Error("QRious não carregou"));
+            }
+            setTimeout(tick, 50);
+          })();
+        });
+      }
+
+      // ==== auto-teste visual da lib ====
+      waitForQRious().then(() => {
+        try {
+          new QRious({ element: document.getElementById('qrcode'), value: 'READY', size: 160, background: 'white', foreground: 'black' });
+          document.getElementById("pix-code").textContent = 'READY';
+          setTimeout(()=>{
+            const ctx = document.getElementById('qrcode')?.getContext('2d');
+            ctx && ctx.clearRect(0,0,220,220);
+            document.getElementById("pix-code").textContent = '';
+          }, 800);
+        } catch(e) { console.error('QRious teste falhou:', e); }
+      }).catch(()=>{ /* ignore */ });
+
+      // ==== clique nos planos ====
+      document.querySelectorAll('.btn-plano').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const valor = parseFloat(btn.dataset.valor);
+          const descricao = btn.dataset.desc;
+          iniciarCheckout({ valor, descricao, minutos: 120 });
+        });
+      });
+
+      document.getElementById('btn-voltar').addEventListener('click', voltarEscolha);
+
+      // se vier com valor/descricao na URL, pula a tela
+      const valorUrl = get("valor");
+      const descUrl  = (get("descricao") || "").replace(/\+/g, " ");
+      if (valorUrl && descUrl) {
+        iniciarCheckout({ valor: parseFloat(valorUrl), descricao: descUrl, minutos: 120 });
+      }
+
+      // -------- helpers ----------
+      const onlyDigits = (s) => (s || '').replace(/\D/g, '');
+
+      function voltarEscolha() {
+        limparFluxo();
+        elCheckout.style.display = 'none';
+        elEscolha.style.display  = 'block';
+        document.getElementById('pix-code').textContent = '';
+        const ctx = document.getElementById('qrcode')?.getContext('2d');
+        ctx && ctx.clearRect(0,0,220,220);
+        document.getElementById('status').className = 'pill info';
+        document.getElementById('status').textContent = '🔄 Aguardando pagamento...';
+        document.getElementById('timer').className = 'pill warn';
+        document.getElementById('timer').textContent = '⏰ Tempo livre: 2:00';
+        // reseta form
+        elCliErro.style.display = 'none';
+        elCliErro.textContent = '';
+      }
+
+      function limparFluxo() {
+        if (pollingHandle) clearInterval(pollingHandle);
+        if (timerHandle) clearInterval(timerHandle);
+        pollingHandle = null; timerHandle = null; REF = null;
+      }
+
+      function iniciarTimer() {
+        const el = document.getElementById('timer');
+        const fmt = (t) => `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+        el.textContent = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+        timerHandle = setInterval(() => {
+          tempoLivre = Math.max(tempoLivre-1, 0);
+          el.textContent = `⏰ Tempo livre: ${fmt(tempoLivre)}`;
+          if (tempoLivre === 0) {
+            clearInterval(timerHandle);
+            el.className = 'pill err';
+            el.textContent = '⏰ Tempo esgotado! Faça o pagamento para continuar.';
+          }
+        }, 1000);
+      }
+
+      function iniciarPolling() {
+        pollingHandle = setInterval(async () => {
+          if (!REF) return;
+          try {
+            const r = await fetch(`${API}/api/verificar-pagamento`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ externalId: REF })
+            });
+            if (!r.ok) return;
+            const j = await r.json();
+            const status = j?.status;
+            if (status === 'pago' || j?.pago) {
+              limparFluxo();
+              const s = document.getElementById('status');
+              s.className = 'pill ok';
+              s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
+
+              try {
+                await fetch(`${API}/api/liberar-acesso`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ externalId: REF, mac, ip, linkOrig })
+                });
+              } catch {}
+
+              // ===== Redirecionamento com validação de protocolo http/https =====
+              setTimeout(() => {
+                try {
+                  const fallback = 'http://clients3.google.com/generate_204';
+                  const candidate = safeRedirectUrl(linkOrig) || fallback;
+
+                  let target = '/';
+                  try {
+                    const u = new URL(candidate, window.location.origin);
+                    if (u.protocol === 'http:' || u.protocol === 'https:') {
+                      target = u.href;
+                    } else {
+                      target = fallback;
+                    }
+                  } catch {
+                    target = fallback;
+                  }
+
+                  window.location.href = target;
+                } catch {
+                  window.location.href = '/';
+                }
+              }, 1200);
+              // ==================================================================
+            }
+
+            if (status === 'expirado' || status === 'cancelado') {
+              limparFluxo();
+              const s = document.getElementById('status');
+              s.className = 'pill err';
+              s.textContent = status === 'expirado'
+                ? '⏳ Pagamento expirado. Gere um novo QR.'
+                : '❌ Pagamento cancelado.';
+            }
+          } catch {/* ignora erros intermitentes */}
+        }, 3000);
+      }
+
+      // -------- fluxo checkout ----------
+      async function iniciarCheckout({ valor, descricao, minutos }) {
+        // troca telas
+        elEscolha.style.display = 'none';
+        elCheckout.style.display = 'block';
+
+        tempoLivre = Number(minutos) || 120;
+        document.getElementById('desc-plano').textContent =
+          `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+        const setErro = (msg) => {
+          const s = document.getElementById('status');
+          s.className = 'pill err';
+          s.textContent = msg;
+        };
+
+        // se faltar DOC, mostra form para coletar e só depois gera o QR
+        if (!onlyDigits(docCli)) {
+          elClienteForm.style.display = 'block';
+          elCliNome.value = nomeCli || '';
+          elCliDoc.value  = docCli  || '';
+
+          elBtnGerar.onclick = async () => {
+            elCliErro.style.display = 'none';
+            elCliErro.textContent = '';
+            const n  = (elCliNome.value || '').trim() || 'Cliente';
+            const d0 = onlyDigits(elCliDoc.value);
+            if (!d0 || (d0.length !== 11 && d0.length !== 14)) {
+              elCliErro.style.display = 'block';
+              elCliErro.textContent = 'Informe CPF (11 dígitos) ou CNPJ (14 dígitos).';
+              return;
+            }
+            nomeCli = n;
+            docCli  = d0;
+            elClienteForm.style.display = 'none';
+            await gerarPix({ valor, descricao, setErro });
+          };
+          return; // espera o clique do usuário
+        }
+
+        // se já tem DOC vindo por URL, gera direto
+        await gerarPix({ valor, descricao, setErro });
+      }
+
+      async function gerarPix({ valor, descricao, setErro }) {
+        try {
+          // cria cobrança no endpoint (checkout)
+          const res  = await fetch(`${API}/api/pagamentos/checkout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              valor,
+              descricao,
+              clienteIp: ip,
+              clienteMac: mac,
+              customer: { name: nomeCli, document: docCli }
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          console.log('[POST /api/pagamentos/checkout]', res.status, data);
+
+          if (!res.ok) {
+            const msg = data?.error || `HTTP ${res.status}`;
+            return setErro('❌ ' + msg);
+          }
+
+          const copiaECola = data?.copiaECola || data?.payloadPix || null;
+          REF = data?.externalId || null;
+
+          if (!REF)        return setErro('Resposta sem referência (externalId).');
+          if (!copiaECola) return setErro('Resposta sem “copia-e-cola” Pix.');
+
+          // QR + copia e cola
+          await waitForQRious();
+          document.getElementById("pix-code").textContent = copiaECola;
+          new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
+
+          iniciarTimer();
+          iniciarPolling();
+        } catch (e) {
+          console.error('checkout erro:', e);
+          setErro('❌ Não foi possível iniciar o pagamento.');
+        }
+      }
+
+      window.copiarPix = function() {
+        const code = document.getElementById('pix-code').textContent;
+        if (!code) return;
+        navigator.clipboard.writeText(code).then(() => {
+          const s = document.getElementById('status');
+          const orig = s.textContent;
+          s.textContent = '📋 Código Pix copiado!';
+          setTimeout(() => { s.textContent = orig; }, 1800);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

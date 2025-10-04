@@ -1,0 +1,49 @@
+# =========================
+# Node / Next.js
+# =========================
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# =========================
+# Logs
+# =========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# =========================
+# Sistema / OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Ambiente / Secrets
+# =========================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.example
+.nvmrc
+
+# =========================
+# Prisma / Banco local
+# =========================
+/src/generated/prisma
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.sqlite
+patch.sql
+
+# =========================
+# Arquivos temporários / backup
+# =========================
+*.bak
+*.tmp
+*.swp
