@@ -14,62 +14,74 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const {
-      externalId,   // preferencial
-      txid,         // alternativa
+      externalId,   // preferencial (Pedido.code)
+      txid,         // alternativa (Charge.providerId)
       valor,        // fallback em reais
       descricao,    // fallback
       clienteIp,    // opcional p/ desambiguar no fallback
       lookbackMin,  // opcional, padrão 120 min
     } = body || {};
 
-    // 1) Caminho preferido: localizar por externalId
+    // 1) Caminho preferido: localizar por externalId (Pedido.code)
     if (externalId) {
-      const pg = await prisma.pagamento.findUnique({
-        where: { externalId },
+      const pedido = await prisma.pedido.findUnique({
+        where: { code: externalId },
         select: {
           id: true,
           status: true,
-          txid: true,
-          externalId: true,
-          valorCent: true,
-          descricao: true,
-          criadoEm: true,
-          atualizadoEm: true,
-        },
+          code: true,
+          charges: {
+            select: {
+              id: true,
+              providerId: true,
+              status: true,
+              qrCode: true,
+              qrCodeUrl: true
+            }
+          }
+        }
       });
-      if (!pg) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
+
+      if (!pedido) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
+
+      const pago = pedido.status === 'PAID';
 
       return NextResponse.json({
         encontrado: true,
-        pagamentoId: pg.id,
-        status: pg.status,
-        pago: pg.status === 'pago',
-        externalId: pg.externalId,
-        txid: pg.txid,
+        pagamentoId: pedido.id,
+        status: pedido.status,
+        pago,
+        externalId: pedido.code,
+        charges: pedido.charges
       });
     }
 
-    // 2) Alternativa: localizar por txid
+    // 2) Alternativa: localizar por txid (Charge.providerId)
     if (txid) {
-      const pg = await prisma.pagamento.findFirst({
-        where: { txid },
-        orderBy: { criadoEm: 'desc' },
+      const charge = await prisma.charge.findFirst({
+        where: { providerId: txid },
+        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
           status: true,
-          txid: true,
-          externalId: true,
-        },
+          providerId: true,
+          pedido: {
+            select: { id: true, status: true, code: true }
+          }
+        }
       });
-      if (!pg) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
+
+      if (!charge) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
+
+      const pago = charge.status === 'PAID';
 
       return NextResponse.json({
         encontrado: true,
-        pagamentoId: pg.id,
-        status: pg.status,
-        pago: pg.status === 'pago',
-        externalId: pg.externalId,
-        txid: pg.txid,
+        pagamentoId: charge.pedido.id,
+        status: charge.pedido.status,
+        pago,
+        externalId: charge.pedido.code,
+        txid: charge.providerId
       });
     }
 
@@ -85,35 +97,31 @@ export async function POST(req) {
     const minutes = Number.isFinite(Number(lookbackMin)) ? Number(lookbackMin) : DEFAULT_LOOKBACK_MINUTES;
     const from = new Date(Date.now() - minutes * 60 * 1000);
 
-    const where = {
-      valorCent,
-      descricao,
-      criadoEm: { gte: from },
-      ...(clienteIp ? { clienteIp } : {}),
-    };
-
-    const pg = await prisma.pagamento.findFirst({
-      where,
-      orderBy: [{ status: 'desc' }, { criadoEm: 'desc' }], // dá preferência a pagos; depois o mais novo
+    const pedido = await prisma.pedido.findFirst({
+      where: {
+        amount: valorCent,
+        description: descricao,
+        createdAt: { gte: from },
+        ...(clienteIp ? { ip: clienteIp } : {})
+      },
+      orderBy: [{ status: 'desc' }, { createdAt: 'desc' }],
       select: {
         id: true,
         status: true,
-        txid: true,
-        externalId: true,
-      },
+        code: true,
+        charges: { select: { id: true, providerId: true, status: true } }
+      }
     });
 
-    if (!pg) {
-      return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
-    }
+    if (!pedido) return NextResponse.json({ encontrado: false, pago: false, status: 'desconhecido' });
 
     return NextResponse.json({
       encontrado: true,
-      pagamentoId: pg.id,
-      status: pg.status,
-      pago: pg.status === 'pago',
-      externalId: pg.externalId,
-      txid: pg.txid,
+      pagamentoId: pedido.id,
+      status: pedido.status,
+      pago: pedido.status === 'PAID',
+      externalId: pedido.code,
+      charges: pedido.charges
     });
   } catch (error) {
     console.error('Erro ao verificar pagamento:', error);
