@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-// ajuste: importa default e desestrutura
 import mikrotik from "@/lib/mikrotik";
 const { liberarCliente } = mikrotik;
 
@@ -12,9 +11,9 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
 
     const {
-      externalId,
-      pagamentoId,
-      txid,
+      externalId, // agora corresponde ao code do Pedido
+      pagamentoId, // id do Pedido
+      txid,       // providerId da Charge
       ip,
       mac,
       linkOrig,
@@ -22,50 +21,60 @@ export async function POST(req) {
 
     if (!externalId && !pagamentoId && !txid) {
       return NextResponse.json(
-        { error: "Informe externalId, pagamentoId ou txid." },
+        { error: "Informe externalId (code), pagamentoId ou txid." },
         { status: 400 }
       );
     }
 
-    let pagamento = null;
+    let pedido = null;
 
+    // buscar pelo code (externalId)
     if (externalId) {
-      pagamento = await prisma.pagamento.findUnique({ where: { externalId } });
-    }
-    if (!pagamento && pagamentoId) {
-      pagamento = await prisma.pagamento.findUnique({ where: { id: pagamentoId } });
-    }
-    if (!pagamento && txid) {
-      pagamento = await prisma.pagamento.findFirst({ where: { txid } });
+      pedido = await prisma.pedido.findUnique({ where: { code: externalId } });
     }
 
-    if (!pagamento) {
+    // buscar pelo id
+    if (!pedido && pagamentoId) {
+      pedido = await prisma.pedido.findUnique({ where: { id: pagamentoId } });
+    }
+
+    // buscar pelo txid na tabela Charge
+    if (!pedido && txid) {
+      const charge = await prisma.charge.findFirst({ where: { providerId: txid } });
+      if (charge) {
+        pedido = await prisma.pedido.findUnique({ where: { id: charge.pedidoId } });
+      }
+    }
+
+    if (!pedido) {
       return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });
     }
 
-    if (pagamento.status !== "pago") {
-      await prisma.pagamento.update({
-        where: { id: pagamento.id },
-        data: { status: "pago" },
+    // atualizar status se necessário
+    if (pedido.status !== "PAID") {
+      await prisma.pedido.update({
+        where: { id: pedido.id },
+        data: { status: "PAID" },
       });
-      pagamento = { ...pagamento, status: "pago" };
+      pedido = { ...pedido, status: "PAID" };
     }
 
-    const ipFinal  = ip  || pagamento.clienteIp  || null;
-    const macFinal = mac || pagamento.clienteMac || null;
+    const ipFinal  = ip  || pedido.ip  || null;
+    const macFinal = mac || pedido.deviceMac || null;
 
+    // liberar acesso via Mikrotik
     const lib = await liberarCliente({
       ip: ipFinal || undefined,
       mac: macFinal || undefined,
-      comentario: `pagamento:${pagamento.id}`,
+      comentario: `pedido:${pedido.id}`,
       timeout: process.env.MKT_TIMEOUT || "4h",
     });
 
     return NextResponse.json({
       ok: true,
-      pagamentoId: pagamento.id,
-      externalId: pagamento.externalId,
-      status: "pago",
+      pedidoId: pedido.id,
+      code: pedido.code,
+      status: pedido.status,
       mikrotik: lib,
       redirect: linkOrig || null,
     });
