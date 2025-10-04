@@ -9,6 +9,7 @@ const toCents = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 };
+
 const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
 
 export async function POST(req) {
@@ -16,18 +17,16 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
 
     const descricao = body?.descricao || "Acesso Wi-Fi";
-    const cents = toCents(body?.valor); // REAIS → CENTAVOS
-    if (cents == null || cents <= 0) {
+    const valorCent = toCents(body?.valor);
+
+    if (valorCent == null || valorCent <= 0) {
       return NextResponse.json({ error: "valor (reais) inválido" }, { status: 400 });
     }
-    if (!descricao) {
-      return NextResponse.json({ error: "descricao é obrigatória" }, { status: 400 });
-    }
 
-    // --- customer/document deve vir do front (URL ou formulário) ---
+    // --- customer/document ---
     const customerIn = body?.customer || {
       name: body?.customerName || "Cliente",
-      email: body?.customerEmail || undefined,
+      email: body?.customerEmail || "cliente@lopesul.com.br",
       document: body?.customerDoc,
     };
     const document = onlyDigits(customerIn?.document);
@@ -39,61 +38,59 @@ export async function POST(req) {
     }
     const customer = {
       name: customerIn?.name || "Cliente",
-      email: customerIn?.email || undefined,
-      document, // já normalizado
+      email: customerIn?.email || "cliente@lopesul.com.br",
+      document,
     };
 
-    // Idempotência/coerência entre /checkout e /payments/pix
-    const orderId =
-      body?.orderId ||
-      body?.externalId ||
-      randomUUID();
+    // --- idempotency ---
+    const orderId = body?.orderId || body?.externalId || randomUUID();
 
-    // expiração opcional: aceita expiresIn ou expires_in (segundos)
+    // --- expires_in opcional ---
     const expiresIn =
-      Number.isFinite(Number(body?.expiresIn)) ? Number(body?.expiresIn)
-      : Number.isFinite(Number(body?.expires_in)) ? Number(body?.expires_in)
-      : undefined;
+      Number.isFinite(Number(body?.expiresIn))
+        ? Number(body?.expiresIn)
+        : Number.isFinite(Number(body?.expires_in))
+        ? Number(body?.expires_in)
+        : 1800; // padrão 30min
 
-    // Encaminha para /api/payments/pix (centavos)
-    // Usa a mesma origem do request para compatibilidade com desenvolvimento e produção
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? req.url 
-      : "http://localhost:5000";
+    // --- URL da API interna de PIX ---
+    const baseUrl = process.env.NODE_ENV === "production" ? req.url : "http://localhost:5000";
     const url = new URL("/api/payments/pix", baseUrl);
+
     const upstream = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        orderId,                 // garante Idempotency-Key lá
-        valor: cents,            // CENTAVOS
+        valor: valorCent,          // CENTAVOS
         descricao,
+        customer,
+        expires_in: expiresIn,
         clienteIp: body?.clienteIp ?? null,
         deviceMac: body?.clienteMac ?? null,
         metadata: { origem: "checkout-endpoint", ...(body?.metadata || {}) },
-        customer,                // inclui document normalizado
-        ...(expiresIn ? { expires_in: expiresIn } : {}),
+        orderId,
       }),
     });
 
     const j = await upstream.json().catch(() => ({}));
-if (!upstream.ok) {
-  console.error("Erro PIX interno:", j);   // <<< add log
-  return NextResponse.json(
-    { error: j?.error || `HTTP ${upstream.status}` },
-    { status: upstream.status }
-  );
-}
 
-    // Resposta no formato esperado pelo seu frontend
+    if (!upstream.ok) {
+      console.error("Erro PIX interno:", j);
+      return NextResponse.json(
+        { error: j?.error || `HTTP ${upstream.status}` },
+        { status: upstream.status }
+      );
+    }
+
+    // --- resposta para o frontend ---
     return NextResponse.json({
       externalId: j?.orderId || orderId,
       copiaECola: j?.pix?.qr_code || null,
       payloadPix: j?.pix?.qr_code || null,
-      expiresIn: j?.pix?.expires_in ?? null,
+      expiresIn: j?.pix?.expires_in ?? expiresIn,
     });
   } catch (e) {
-    console.error("[CHECKOUT] Erro:", e.message);
-    return NextResponse.json({ error: String(e?.message || e) }, { status: 400 });
+    console.error("[CHECKOUT] Erro:", e.message || e);
+    return NextResponse.json({ error: e.message || String(e) }, { status: 500 });
   }
 }

@@ -123,89 +123,29 @@
     document.addEventListener('DOMContentLoaded', () => {
       const API = ""; // mesmo domínio
 
-      // --- helpers URL/Mikrotik ---
       const get = (n) => new URLSearchParams(location.search).get(n);
       const mac = get("mac") || null;
       const ip = get("ip") || null;
-      const roteador = get("roteador") || null;
       const linkOrig = get("link_orig") || get("link-orig") || "";
 
-      // ► cliente por URL (se vier): ?nome=Fulano&doc=00000000000
       let nomeCli = get("nome") || get("name") || "Cliente";
       let docCli  = get("doc")  || get("document") || "";
 
-      // --------- SANITIZAÇÃO / REDIRECT SEGURO ---------
-      function safeRedirectUrl(raw) {
-        try {
-          if (!raw) return null;
-          const decoded = decodeURIComponent(raw);
-          // Rejeita esquemas perigosos
-          if (/^\s*javascript:/i.test(decoded) || /^\s*data:/i.test(decoded)) return null;
-
-          const base = location.origin;
-          const u = new URL(decoded, base);
-
-          // Permite mesma origem
-          if (u.origin === base) return u.href;
-
-          // Permite apenas o health-check do captive
-          const allow = ['https://clients3.google.com', 'http://clients3.google.com'];
-          if (allow.some((p) => u.href.startsWith(p + '/generate_204'))) return u.href;
-
-          // Caso contrário, bloqueia
-          return null;
-        } catch {
-          return null;
-        }
-      }
-      // -----------------------------------------------
-
-      // estados
-      let REF = null; // externalId
+      let REF = null;
       let tempoLivre = 120;
       let pollingHandle = null;
       let timerHandle = null;
 
       const elEscolha  = document.getElementById('view-escolha');
       const elCheckout = document.getElementById('view-checkout');
-
       const elClienteForm = document.getElementById('cliente-form');
       const elCliNome = document.getElementById('cli-nome');
       const elCliDoc  = document.getElementById('cli-doc');
       const elCliErro = document.getElementById('cli-erro');
       const elBtnGerar = document.getElementById('btn-gerar-pix');
 
-      // ==== Wait QRious ====
-      function waitForQRious(){
-        return new Promise((resolve, reject)=>{
-          let tries = 0;
-          (function tick(){
-            if (window.QRious) return resolve();
-            if (++tries > 120) {
-              const s = document.getElementById('status');
-              s.className = 'pill err';
-              s.textContent = '⚠️ Falha ao carregar QRious. Verifique /captive/vendor/qrious.min.js';
-              return reject(new Error("QRious não carregou"));
-            }
-            setTimeout(tick, 50);
-          })();
-        });
-      }
+      const onlyDigits = (s) => (s || '').replace(/\D/g, '');
 
-      // ==== auto-teste visual da lib ====
-      waitForQRious().then(() => {
-        try {
-          new QRious({ element: document.getElementById('qrcode'), value: 'READY', size: 160, background: 'white', foreground: 'black' });
-          document.getElementById("pix-code").textContent = 'READY';
-          setTimeout(()=>{
-            const ctx = document.getElementById('qrcode')?.getContext('2d');
-            ctx && ctx.clearRect(0,0,220,220);
-            document.getElementById("pix-code").textContent = '';
-          }, 800);
-        } catch(e) { console.error('QRious teste falhou:', e); }
-      }).catch(()=>{ /* ignore */ });
-
-      // ==== clique nos planos ====
       document.querySelectorAll('.btn-plano').forEach(btn => {
         btn.addEventListener('click', () => {
           const valor = parseFloat(btn.dataset.valor);
@@ -215,16 +155,6 @@
       });
 
       document.getElementById('btn-voltar').addEventListener('click', voltarEscolha);
-
-      // se vier com valor/descricao na URL, pula a tela
-      const valorUrl = get("valor");
-      const descUrl  = (get("descricao") || "").replace(/\+/g, " ");
-      if (valorUrl && descUrl) {
-        iniciarCheckout({ valor: parseFloat(valorUrl), descricao: descUrl, minutos: 120 });
-      }
-
-      // -------- helpers ----------
-      const onlyDigits = (s) => (s || '').replace(/\D/g, '');
 
       function voltarEscolha() {
         limparFluxo();
@@ -237,7 +167,6 @@
         document.getElementById('status').textContent = '🔄 Aguardando pagamento...';
         document.getElementById('timer').className = 'pill warn';
         document.getElementById('timer').textContent = '⏰ Tempo livre: 2:00';
-        // reseta form
         elCliErro.style.display = 'none';
         elCliErro.textContent = '';
       }
@@ -280,7 +209,6 @@
               const s = document.getElementById('status');
               s.className = 'pill ok';
               s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
-
               try {
                 await fetch(`${API}/api/liberar-acesso`, {
                   method: "POST",
@@ -288,33 +216,14 @@
                   body: JSON.stringify({ externalId: REF, mac, ip, linkOrig })
                 });
               } catch {}
-
-              // ===== Redirecionamento com validação de protocolo http/https =====
               setTimeout(() => {
                 try {
                   const fallback = 'http://clients3.google.com/generate_204';
-                  const candidate = safeRedirectUrl(linkOrig) || fallback;
-
-                  let target = '/';
-                  try {
-                    const u = new URL(candidate, window.location.origin);
-                    if (u.protocol === 'http:' || u.protocol === 'https:') {
-                      target = u.href;
-                    } else {
-                      target = fallback;
-                    }
-                  } catch {
-                    target = fallback;
-                  }
-
-                  window.location.href = target;
-                } catch {
-                  window.location.href = '/';
-                }
+                  const candidate = linkOrig || fallback;
+                  window.location.href = candidate;
+                } catch { window.location.href = '/'; }
               }, 1200);
-              // ==================================================================
             }
-
             if (status === 'expirado' || status === 'cancelado') {
               limparFluxo();
               const s = document.getElementById('status');
@@ -323,16 +232,13 @@
                 ? '⏳ Pagamento expirado. Gere um novo QR.'
                 : '❌ Pagamento cancelado.';
             }
-          } catch {/* ignora erros intermitentes */}
+          } catch {}
         }, 3000);
       }
 
-      // -------- fluxo checkout ----------
       async function iniciarCheckout({ valor, descricao, minutos }) {
-        // troca telas
         elEscolha.style.display = 'none';
         elCheckout.style.display = 'block';
-
         tempoLivre = Number(minutos) || 120;
         document.getElementById('desc-plano').textContent =
           `${descricao} — R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -343,7 +249,6 @@
           s.textContent = msg;
         };
 
-        // se faltar DOC, mostra form para coletar e só depois gera o QR
         if (!onlyDigits(docCli)) {
           elClienteForm.style.display = 'block';
           elCliNome.value = nomeCli || '';
@@ -354,26 +259,42 @@
             elCliErro.textContent = '';
             const n  = (elCliNome.value || '').trim() || 'Cliente';
             const d0 = onlyDigits(elCliDoc.value);
+
             if (!d0 || (d0.length !== 11 && d0.length !== 14)) {
               elCliErro.style.display = 'block';
               elCliErro.textContent = 'Informe CPF (11 dígitos) ou CNPJ (14 dígitos).';
               return;
             }
-            nomeCli = n;
-            docCli  = d0;
+
+            if ((d0.length === 11 && !validarCPF(d0)) || (d0.length === 14 && !validarCNPJ(d0))) {
+              elCliErro.style.display = 'block';
+              elCliErro.textContent = d0.length === 11 ? 'CPF inválido.' : 'CNPJ inválido.';
+              return;
+            }
+
+            nomeCli = n; docCli = d0;
             elClienteForm.style.display = 'none';
             await gerarPix({ valor, descricao, setErro });
           };
-          return; // espera o clique do usuário
+
+          elCliDoc.addEventListener('input', (e) => {
+            const input = e.target;
+            const pos = input.selectionStart;
+            const oldLength = input.value.length;
+            input.value = formatarDoc(input.value);
+            const newLength = input.value.length;
+            const diff = newLength - oldLength;
+            input.setSelectionRange(pos + diff, pos + diff);
+          });
+
+          return;
         }
 
-        // se já tem DOC vindo por URL, gera direto
         await gerarPix({ valor, descricao, setErro });
       }
 
       async function gerarPix({ valor, descricao, setErro }) {
         try {
-          // cria cobrança no endpoint (checkout)
           const res  = await fetch(`${API}/api/pagamentos/checkout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -386,30 +307,15 @@
             })
           });
           const data = await res.json().catch(() => ({}));
-          console.log('[POST /api/pagamentos/checkout]', res.status, data);
-
-          if (!res.ok) {
-            const msg = data?.error || `HTTP ${res.status}`;
-            return setErro('❌ ' + msg);
-          }
-
+          if (!res.ok) return setErro('❌ ' + (data?.error || `HTTP ${res.status}`));
           const copiaECola = data?.copiaECola || data?.payloadPix || null;
           REF = data?.externalId || null;
-
-          if (!REF)        return setErro('Resposta sem referência (externalId).');
+          if (!REF) return setErro('Resposta sem referência (externalId).');
           if (!copiaECola) return setErro('Resposta sem “copia-e-cola” Pix.');
-
-          // QR + copia e cola
-          await waitForQRious();
           document.getElementById("pix-code").textContent = copiaECola;
           new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
-
-          iniciarTimer();
-          iniciarPolling();
-        } catch (e) {
-          console.error('checkout erro:', e);
-          setErro('❌ Não foi possível iniciar o pagamento.');
-        }
+          iniciarTimer(); iniciarPolling();
+        } catch (e) { setErro('❌ Não foi possível iniciar o pagamento.'); }
       }
 
       window.copiarPix = function() {
@@ -421,6 +327,36 @@
           s.textContent = '📋 Código Pix copiado!';
           setTimeout(() => { s.textContent = orig; }, 1800);
         });
+      }
+
+      function formatarDoc(value){
+        let d = onlyDigits(value);
+        if (d.length <= 11){
+          d = d.replace(/(\d{3})(\d{3})?(\d{3})?(\d{2})?/, (_, a,b,c,d)=> a + (b?'.'+b:'') + (c?'.'+c:'') + (d?'-'+d:''));
+        } else {
+          d = d.replace(/(\d{2})(\d{3})?(\d{3})?(\d{4})?(\d{2})?/, (_, a,b,c,d,e)=> a + (b?'.'+b:'') + (c?'.'+c:'') + (d?'/'+d:'') + (e?'-'+e:''));
+        }
+        return d;
+      }
+
+      function validarCPF(cpf) {
+        if (!cpf || cpf.length !== 11) return false;
+        let sum = 0;
+        if (/^(\d)\1+$/.test(cpf)) return false;
+        for(let i=0;i<9;i++) sum += Number(cpf[i])*(10-i);
+        let r = (sum*10)%11; if(r===10) r=0; if(r!==Number(cpf[9])) return false;
+        sum=0; for(let i=0;i<10;i++) sum+=Number(cpf[i])*(11-i);
+        r=(sum*10)%11; if(r===10) r=0; return r===Number(cpf[10]);
+      }
+
+      function validarCNPJ(cnpj) {
+        if (!cnpj || cnpj.length!==14) return false;
+        if (/^(\d)\1+$/.test(cnpj)) return false;
+        let t=cnpj.length-2, d=cnpj.substring(t), d1=parseInt(d.charAt(0)), d2=parseInt(d.charAt(1)), sum=0, pos=t-7;
+        for(let i=0;i<t;i++){sum+=parseInt(cnpj.charAt(i))*pos; pos--; if(pos<2) pos=9;}
+        let r = sum%11; r = r<2?0:11-r; if(r!==d1) return false;
+        t+=1; sum=0; pos=t-7; for(let i=0;i<t;i++){sum+=parseInt(cnpj.charAt(i))*pos; pos--; if(pos<2) pos=9;}
+        r=sum%11; r=r<2?0:11-r; return r===d2;
       }
     });
   </script>
