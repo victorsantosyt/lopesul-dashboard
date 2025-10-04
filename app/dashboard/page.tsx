@@ -1,16 +1,272 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertTriangle, Database, Play, Settings, CheckCircle } from "lucide-react"
+import { AlertTriangle, Database, Play, Settings, CheckCircle, DollarSign, Users, Activity } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AutoSetupButton } from "@/components/dashboard/auto-setup-button"
+import { createClient } from "@/lib/supabase/server"
 
 export default async function DashboardPage() {
-  // Por enquanto, assumimos que as tabelas não existem
-  // O usuário precisa executar os scripts SQL primeiro
-  const tablesExist = false
+  const supabase = await createClient()
+
+  let tablesExist = false
+  let plansCount = 0
+  let paymentsCount = 0
+  let sessionsCount = 0
+  let totalRevenue = 0
+
+  try {
+    // Check if plans table exists and has data
+    const { data: plans, error: plansError } = await supabase.from("plans").select("*", { count: "exact" }).limit(1)
+
+    if (!plansError && plans !== null) {
+      tablesExist = true
+
+      // Get actual counts and stats
+      const { count: plansTotal } = await supabase.from("plans").select("*", { count: "exact", head: true })
+
+      const { count: paymentsTotal } = await supabase.from("payments").select("*", { count: "exact", head: true })
+
+      const { count: sessionsTotal } = await supabase
+        .from("hotspot_sessions")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+
+      // Calculate total revenue from paid payments
+      const { data: paidPayments } = await supabase.from("payments").select("amount_cents").eq("status", "paid")
+
+      plansCount = plansTotal || 0
+      paymentsCount = paymentsTotal || 0
+      sessionsCount = sessionsTotal || 0
+      totalRevenue = paidPayments?.reduce((sum, p) => sum + (p.amount_cents || 0), 0) || 0
+
+      // If no plans exist, insert sample plans
+      if (plansCount === 0) {
+        const samplePlans = [
+          { name: "1 Hora", duration_hours: 1, price_cents: 500, description: "Acesso por 1 hora", active: true },
+          { name: "3 Horas", duration_hours: 3, price_cents: 1200, description: "Acesso por 3 horas", active: true },
+          { name: "6 Horas", duration_hours: 6, price_cents: 2000, description: "Acesso por 6 horas", active: true },
+          { name: "12 Horas", duration_hours: 12, price_cents: 3500, description: "Acesso por 12 horas", active: true },
+          { name: "1 Dia", duration_hours: 24, price_cents: 5000, description: "Acesso por 24 horas", active: true },
+        ]
+
+        await supabase.from("plans").insert(samplePlans)
+        plansCount = samplePlans.length
+      }
+    }
+  } catch (error) {
+    console.error("[v0] Error checking database:", error)
+    tablesExist = false
+  }
+
   const missingTables = ["payments", "hotspot_sessions", "system_logs", "plans"]
+
+  if (tablesExist) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Dashboard Lopesul</h1>
+            <p className="text-muted-foreground">Controle e monitoramento Mikrotik/Starlink</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-green-600 border-green-600">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Sistema Operacional
+            </Badge>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total de Pagamentos</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{paymentsCount}</div>
+              <p className="text-xs text-muted-foreground">
+                {paymentsCount === 0 ? "Nenhum pagamento ainda" : "Pagamentos registrados"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">R$ {(totalRevenue / 100).toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground">
+                {paymentsCount === 0 ? "Aguardando primeiro pagamento" : "Receita confirmada"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sessões Ativas</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{sessionsCount}</div>
+              <p className="text-xs text-muted-foreground">
+                {sessionsCount === 0 ? "Nenhuma sessão ativa" : "Usuários conectados"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Planos Disponíveis</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{plansCount}</div>
+              <p className="text-xs text-muted-foreground">Planos ativos</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+            <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+            <TabsTrigger value="sessions">Sessões Hotspot</TabsTrigger>
+            <TabsTrigger value="settings">Configurações</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Sistema Configurado com Sucesso!</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Alert>
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    O banco de dados está configurado e operacional. Você pode começar a usar o sistema!
+                  </AlertDescription>
+                </Alert>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <h3 className="font-semibold">Próximos Passos:</h3>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                      <li>
+                        Teste o checkout em{" "}
+                        <a href="/checkout" className="underline">
+                          /checkout
+                        </a>
+                      </li>
+                      <li>Configure as variáveis de ambiente do Pagar.me</li>
+                      <li>Configure a conexão com o Mikrotik</li>
+                      <li>Configure o webhook do Pagar.me</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold">Links Úteis:</h3>
+                    <div className="flex flex-col gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="/checkout">Testar Checkout</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="/portal">Portal do Cliente</a>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="payments" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Pagamentos Recentes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {paymentsCount === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Nenhum pagamento registrado ainda</p>
+                    <Button variant="outline" size="sm" className="mt-4 bg-transparent" asChild>
+                      <a href="/checkout">Fazer primeiro teste</a>
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Visualização detalhada de pagamentos em desenvolvimento
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="sessions" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Sessões Ativas do Hotspot</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {sessionsCount === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Nenhuma sessão ativa no momento</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {sessionsCount} {sessionsCount === 1 ? "usuário conectado" : "usuários conectados"}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="settings" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configurações do Sistema</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Banco de Dados</div>
+                      <div className="text-sm text-muted-foreground">Supabase conectado</div>
+                    </div>
+                    <Badge variant="default">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Operacional
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Pagar.me API</div>
+                      <div className="text-sm text-muted-foreground">Configure as variáveis de ambiente</div>
+                    </div>
+                    <Badge variant="secondary">Configurar</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Mikrotik API</div>
+                      <div className="text-sm text-muted-foreground">Configure as variáveis de ambiente</div>
+                    </div>
+                    <Badge variant="secondary">Configurar</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
