@@ -10,11 +10,11 @@
     "seed": "node prisma/seed.js"
   },
   "scripts": {
-    "dev": "next dev -p 5000 -H 0.0.0.0",
+    "dev": "next dev -p $PORT -H 0.0.0.0",
     "build": "next build",
     "postinstall": "prisma generate",
     "prestart": "prisma migrate deploy",
-    "start": "next start -p 5000 -H 0.0.0.0",
+    "start": "next start -p $PORT-H 0.0.0.0",
     "start:local": "next start -p 3000",
     "migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
