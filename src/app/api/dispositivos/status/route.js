@@ -1,30 +1,67 @@
-import { PrismaClient } from '@prisma/client';
+// src/app/api/dispositivos/status/route.js
 import { NextResponse } from 'next/server';
-import ping from 'ping';
-
 import prisma from '@/lib/prisma';
+import { checkAnyOnline, tcpCheck, pingCheck } from '@/lib/netcheck';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function pickIp(row) {
+  return row?.ip ?? row?.enderecoIp ?? row?.ipAddress ?? row?.host ?? null;
+}
 
 export async function GET() {
   try {
+    // NÃO usa select com campos incertos; traz tudo e escolhe o IP em memória
     const dispositivos = await prisma.dispositivo.findMany({
-      include: { frota: true },
+      take: 1000,
     });
 
-    const resultados = await Promise.all(
-      dispositivos.map(async (d) => {
-        const res = await ping.promise.probe(d.ip, { timeout: 2 });
-        return {
-          id: d.id,
-          ip: d.ip,
-          frota: d.frota?.nome || d.frotaId,
-          status: res.alive ? 'online' : 'offline',
-        };
-      })
+    const ipsDb = Array.from(
+      new Set((dispositivos ?? []).map(pickIp).filter(Boolean))
     );
 
-    return NextResponse.json(resultados);
-  } catch (error) {
-    console.error('Erro ao verificar status:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    // hosts extras via .env (opcional)
+    if (process.env.MIKROTIK_HOST) ipsDb.push(process.env.MIKROTIK_HOST);
+    if (process.env.STARLINK_HOST) ipsDb.push(process.env.STARLINK_HOST);
+
+    // Mikrotik: TCP 8728 ou ping
+    const mk = await checkAnyOnline(ipsDb);
+
+    // Starlink: tenta HTTP (80) e, se falhar, ping
+    async function starlinkOnline(hosts) {
+      const arr = Array.from(new Set((hosts ?? []).filter(Boolean)));
+      for (const h of arr) {
+        if (await tcpCheck(h, 80, 1200)) return { online: true, lastHost: h };
+        if (await pingCheck(h, 1200))   return { online: true, lastHost: h };
+      }
+      return { online: false, lastHost: arr[0] || null };
+    }
+    const sl = await starlinkOnline(ipsDb);
+
+    return NextResponse.json(
+      {
+        mikrotik: {
+          online: mk.online,
+          hosts: ipsDb,
+          lastHost: mk.lastHost,
+          port: Number(process.env.MIKROTIK_PORT || 8728),
+          via: 'tcp(8728)|ping',
+        },
+        starlink: {
+          online: sl.online,
+          hosts: ipsDb,
+          lastHost: sl.lastHost,
+          via: 'tcp(80)|ping',
+        },
+      },
+      { status: 200, headers: { 'Cache-Control': 'no-store' } }
+    );
+  } catch (e) {
+    console.error('GET /api/dispositivos/status', e?.message || e);
+    return NextResponse.json(
+      { mikrotik: { online: false }, starlink: { online: false } },
+      { status: 200 }
+    );
   }
 }

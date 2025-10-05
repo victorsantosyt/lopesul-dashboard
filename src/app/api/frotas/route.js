@@ -1,5 +1,11 @@
+// src/app/api/frotas/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { checkAnyOnline } from "@/lib/netcheck";
+
+// força Node.js (precisamos de net/ping)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   try {
@@ -9,6 +15,9 @@ export async function GET(req) {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
+    // Puxa IPs dos dispositivos para medir status.
+    // Se o campo NÃO for "ip", troque abaixo para o nome real do seu schema:
+    // ex.: select: { enderecoIp: true } e ajuste o map(d => d.enderecoIp)
     const frotas = await prisma.frota.findMany({
       select: {
         id: true,
@@ -21,37 +30,52 @@ export async function GET(req) {
           },
         },
         vendas: {
-          where: { data: { gte: since } },
-          select: { valorCent: true }, // <-- aqui!
+          where: { data: { gte: since } }, // ajuste se seu campo de data for createdAt
+          select: { valorCent: true },     // ajuste se for "valor" em reais
         },
         dispositivos: {
-          select: { id: true },
-          take: 0,
+          select: { ip: true }, // <<-- TROQUE AQUI se o campo for outro nome
+          take: 100,            // segurança: limita consulta
         },
       },
       orderBy: { criadoEm: "desc" },
     });
 
-    const rows = (frotas || []).map((f) => {
-      const vendas = f.vendas || [];
-      // soma centavos -> converte para reais
-      const receita = vendas.reduce(
-        (acc, v) => acc + (Number(v.valorCent) || 0),
-        0
-      ) / 100;
+    // Calcula receita + status em paralelo
+    const rows = await Promise.all(
+      (frotas ?? []).map(async (f) => {
+        const receitaCentavos = (f.vendas ?? []).reduce(
+          (acc, v) => acc + (Number(v?.valorCent) || 0),
+          0
+        );
 
-      return {
-        id: f.id,
-        nome: f.nome || "-",
-        criadoEm: f.criadoEm,
-        dispositivos: f._count?.dispositivos || 0,
-        vendasTotal: f._count?.vendas || 0, // total histórico (count)
-        vendasPeriodoQtd: vendas.length,     // no período
-        vendasPeriodoReceita: receita,       // no período (R$)
-      };
-    });
+        const ips = (f.dispositivos ?? []).map((d) => d?.ip).filter(Boolean); // <<-- ajuste se renomear o campo
+        let status = "desconhecido";
+        if (ips.length > 0) {
+          const { online } = await checkAnyOnline(ips);
+          status = online ? "online" : "offline";
+        }
 
-    return NextResponse.json(rows);
+        return {
+          id: f.id,
+          nome: f.nome ?? "-",
+          criadoEm: f.criadoEm,
+
+          acessos: Number(f._count?.dispositivos ?? 0),
+          valorTotal: Number(receitaCentavos / 100),
+          valorTotalCentavos: Number(receitaCentavos),
+
+          status,
+
+          // extras informativos
+          vendasTotal: Number(f._count?.vendas ?? 0),
+          vendasPeriodoQtd: (f.vendas ?? []).length,
+          periodoDias: days,
+        };
+      })
+    );
+
+    return NextResponse.json(rows, { status: 200 });
   } catch (e) {
     console.error("GET /api/frotas erro:", e?.message || e);
     return NextResponse.json([], { status: 200 });

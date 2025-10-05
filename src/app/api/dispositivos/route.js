@@ -1,38 +1,49 @@
-// src/app/api/dispositivos/route.js
+// src/app/api/dispositivos/status/route.js
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { checkAnyOnline, checkStarlink } from '@/lib/netcheck';
 
-// LISTAR
-export async function GET() {
-  try {
-    const dispositivos = await prisma.dispositivo.findMany({
-      orderBy: { criadoEm: 'desc' },
-      include: {
-        // Seu schema de Frota não tem "nome", então só retornamos o id.
-        frota: { select: { id: true } },
-      },
-    });
-    return NextResponse.json(dispositivos);
-  } catch (e) {
-    console.error('GET /api/dispositivos', e);
-    return NextResponse.json({ error: 'Erro ao listar dispositivos' }, { status: 500 });
-  }
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function pickIp(row) {
+  return row?.ip ?? row?.enderecoIp ?? row?.ipAddress ?? row?.host ?? null;
 }
 
-// CRIAR (opcional)
-export async function POST(req) {
+export async function GET() {
   try {
-    const { ip, frotaId } = await req.json();
-    if (!ip || !frotaId) {
-      return NextResponse.json({ error: 'ip e frotaId são obrigatórios.' }, { status: 400 });
-    }
-    const created = await prisma.dispositivo.create({
-      data: { ip, frotaId },
-      include: { frota: { select: { id: true } } },
-    });
-    return NextResponse.json(created, { status: 201 });
+    const dispositivos = await prisma.dispositivo.findMany({ take: 1000 });
+    const ipsDb = Array.from(new Set((dispositivos ?? []).map(pickIp).filter(Boolean)));
+
+    if (process.env.MIKROTIK_HOST) ipsDb.push(process.env.MIKROTIK_HOST);
+    if (process.env.STARLINK_HOST) ipsDb.push(process.env.STARLINK_HOST);
+
+    const mk = await checkAnyOnline(ipsDb);
+    const sl = await checkStarlink(ipsDb);
+
+    return NextResponse.json(
+      {
+        mikrotik: {
+          online: mk.online,
+          hosts: ipsDb,
+          lastHost: mk.lastHost,
+          port: Number(process.env.MIKROTIK_PORT || 8728),
+          via: process.env.MIKROTIK_VIA_VPS === '1' ? 'vps:ssh' : 'direct',
+        },
+        starlink: {
+          online: sl.online,
+          hosts: ipsDb,
+          lastHost: sl.lastHost,
+          via: process.env.STARLINK_VIA_VPS === '1' ? 'vps:ssh' : 'direct',
+        },
+      },
+      { status: 200, headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (e) {
-    console.error('POST /api/dispositivos', e);
-    return NextResponse.json({ error: 'Erro ao criar dispositivo' }, { status: 500 });
+    console.error('GET /api/dispositivos/status', e?.message || e);
+    return NextResponse.json(
+      { mikrotik: { online: false }, starlink: { online: false } },
+      { status: 200 }
+    );
   }
 }
