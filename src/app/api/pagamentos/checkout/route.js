@@ -50,20 +50,26 @@ export async function POST(req) {
       Number.isFinite(Number(body?.expiresIn))
         ? Number(body?.expiresIn)
         : Number.isFinite(Number(body?.expires_in))
-          ? Number(body?.expires_in)
-          : 1800; // padrão 30min
+        ? Number(body?.expires_in)
+        : 1800; // padrão 30min
 
-    // --- URL da API interna de PIX ---
-    const baseUrl =
-      process.env.NODE_ENV === "production"
-        ? process.env.PIX_BASE_URL
-        : "https://lopesul-dashboard-production.up.railway.app";
+    // --- Construção da URL base (CORRIGIDO) ---
+    const headers = req.headers;
+    const host = headers.get('host');
+    const protocol = headers.get('x-forwarded-proto') || 
+                    (host && host.includes('localhost') ? 'http' : 'https');
+    
+    // URL base mais robusta
+    const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+    const pixUrl = `${baseUrl}/api/payments/pix`;
 
-    const url = new URL("/api/payments/pix", baseUrl);
+    console.log('[CHECKOUT] URL PIX:', pixUrl); // Debug
 
-    const upstream = await fetch(url, {
+    const upstream = await fetch(pixUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         valor: valorCent,          // CENTAVOS
         descricao,
@@ -80,6 +86,7 @@ export async function POST(req) {
 
     if (!upstream.ok) {
       console.error("Erro PIX interno:", j);
+      console.error("Status:", upstream.status);
       return NextResponse.json(
         { error: j?.error || `HTTP ${upstream.status}` },
         { status: upstream.status }
