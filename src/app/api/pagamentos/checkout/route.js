@@ -50,11 +50,15 @@ export async function POST(req) {
       Number.isFinite(Number(body?.expiresIn))
         ? Number(body?.expiresIn)
         : Number.isFinite(Number(body?.expires_in))
-        ? Number(body?.expires_in)
-        : 1800; // padrão 30min
+          ? Number(body?.expires_in)
+          : 1800; // padrão 30min
 
     // --- URL da API interna de PIX ---
-    const baseUrl = process.env.NODE_ENV === "production" ? req.url : "http://localhost:5000";
+    const baseUrl =
+      process.env.NODE_ENV === "production"
+        ? process.env.PIX_BASE_URL
+        : "http://localhost:5000";
+
     const url = new URL("/api/payments/pix", baseUrl);
 
     const upstream = await fetch(url, {
