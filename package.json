@@ -15,13 +15,16 @@
     "postinstall": "prisma generate",
     "prestart": "prisma migrate deploy",
     "start": "next start -p $PORT -H 0.0.0.0",
-    "start:local": "next start -p 3000",
+    "start:local": "next start -p 3000 -H 0.0.0.0",
+    "studio": "cp .env.local .env || true && prisma studio -p 5555 -H 0.0.0.0",
+    "db:deploy": "cp .env.local .env || true && prisma migrate deploy",
+    "db:seed": "node prisma/seed.js",
     "migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "prisma:db:push": "prisma db push"
   },
   "dependencies": {
-    "@prisma/client": "^6.15.0",
+    "@prisma/client": "^6.16.3",
     "autoprefixer": "^10.4.0",
     "bcryptjs": "^2.4.3",
     "echarts": "^5.6.0",
@@ -43,7 +46,7 @@
     "tailwindcss": "^3.3.0"
   },
   "devDependencies": {
-    "prisma": "^6.15.0",
+    "prisma": "^6.16.3",
     "supports-color": "^10.2.2"
   }
 }
