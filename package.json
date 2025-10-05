@@ -5,11 +5,8 @@
   "engines": {
     "node": ">=18"
   },
-  "prisma": {
-    "schema": "prisma/schema.prisma",
-    "seed": "node prisma/seed.js"
-  },
   "scripts": {
+<<<<<<< HEAD
     "dev": "next dev -p $PORT -H 0.0.0.0",
     "build": "next build",
     "postinstall": "prisma generate",
@@ -20,8 +17,21 @@
     "db:deploy": "cp .env.local .env || true && prisma migrate deploy",
     "db:seed": "node prisma/seed.js",
     "migrate:deploy": "prisma migrate deploy",
+=======
+    "dev": "next dev --port 3000 --hostname 0.0.0.0",
+    "build": "next build",
+    "postinstall": "prisma generate",
+    "prestart": "prisma migrate deploy",
+    "start": "next start --port $PORT --hostname 0.0.0.0",
+    "start:local": "next start --port 3000 --hostname 0.0.0.0",
+
+    "studio": "cp .env.local .env || true && prisma studio --port 5555 --hostname 0.0.0.0",
+    "db:deploy": "cp .env.local .env || true && prisma migrate deploy",
+    "db:seed": "node prisma/seed.js",
+>>>>>>> chore/vps-prep
     "prisma:generate": "prisma generate",
-    "prisma:db:push": "prisma db push"
+    "prisma:db:push": "prisma db push",
+    "prisma:validate": "prisma validate"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",
@@ -46,6 +56,10 @@
     "tailwindcss": "^3.3.0"
   },
   "devDependencies": {
+<<<<<<< HEAD
+=======
+    "dotenv": "^16.4.5",
+>>>>>>> chore/vps-prep
     "prisma": "^6.16.3",
     "supports-color": "^10.2.2"
   }

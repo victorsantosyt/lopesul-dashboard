@@ -17,6 +17,10 @@ export async function GET(req) {
 
     // ---------- Pagamentos (1 query com groupBy) ----------
     // retorna linhas por status com _count e _sum.valorCent
+    if (!prisma.pagamento) {
+  console.error("Tabela pagamento não encontrada.");
+  return NextResponse.json({ error: "Tabela não disponível." });
+}
     const pgRows =
       (await prisma.pagamento
         .groupBy({
