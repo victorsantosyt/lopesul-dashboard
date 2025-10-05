@@ -57,7 +57,7 @@ export async function POST(req) {
     const baseUrl =
       process.env.NODE_ENV === "production"
         ? process.env.PIX_BASE_URL
-        : "http://localhost:5000";
+        : "https://lopesul-dashboard-production.up.railway.app";
 
     const url = new URL("/api/payments/pix", baseUrl);
 
