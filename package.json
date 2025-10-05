@@ -6,29 +6,15 @@
     "node": ">=18"
   },
   "scripts": {
-<<<<<<< HEAD
-    "dev": "next dev -p $PORT -H 0.0.0.0",
-    "build": "next build",
-    "postinstall": "prisma generate",
-    "prestart": "prisma migrate deploy",
-    "start": "next start -p $PORT -H 0.0.0.0",
-    "start:local": "next start -p 3000 -H 0.0.0.0",
-    "studio": "cp .env.local .env || true && prisma studio -p 5555 -H 0.0.0.0",
-    "db:deploy": "cp .env.local .env || true && prisma migrate deploy",
-    "db:seed": "node prisma/seed.js",
-    "migrate:deploy": "prisma migrate deploy",
-=======
     "dev": "next dev --port 3000 --hostname 0.0.0.0",
     "build": "next build",
     "postinstall": "prisma generate",
     "prestart": "prisma migrate deploy",
     "start": "next start --port $PORT --hostname 0.0.0.0",
     "start:local": "next start --port 3000 --hostname 0.0.0.0",
-
     "studio": "cp .env.local .env || true && prisma studio --port 5555 --hostname 0.0.0.0",
     "db:deploy": "cp .env.local .env || true && prisma migrate deploy",
     "db:seed": "node prisma/seed.js",
->>>>>>> chore/vps-prep
     "prisma:generate": "prisma generate",
     "prisma:db:push": "prisma db push",
     "prisma:validate": "prisma validate"
@@ -42,7 +28,6 @@
     "lucide-react": "^0.513.0",
     "mikronode-ng": "^1.0.11",
     "next": "^15.3.4",
-    "node-fetch": "^3.3.2",
     "node-routeros": "^1.6.8",
     "node-ssh": "^13.2.1",
     "ping": "^0.4.4",
@@ -56,10 +41,7 @@
     "tailwindcss": "^3.3.0"
   },
   "devDependencies": {
-<<<<<<< HEAD
-=======
-    "dotenv": "^16.4.5",
->>>>>>> chore/vps-prep
+    "dotenv": "^17.2.3",
     "prisma": "^6.16.3",
     "supports-color": "^10.2.2"
   }
