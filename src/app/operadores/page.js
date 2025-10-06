@@ -161,7 +161,7 @@ export default function OperadoresPage() {
         onSubmit={onSubmit}
         className="
           flex flex-col md:flex-row md:items-end gap-4 mb-8
-          bg-[#273449] dark:bg-[#273449]
+          bg-[#F8FAFC] dark:bg-[#273449]
           border border-slate-700
           rounded-2xl shadow-md p-5
         "
@@ -250,7 +250,7 @@ export default function OperadoresPage() {
       <div
        className="
           overflow-x-auto
-          bg-[#1E293B] dark:bg-[#1E293B]
+          bg-[#F8FAFC] dark:bg-[#1E293B]
           border border-slate-700
           rounded-2xl shadow-md
         "
