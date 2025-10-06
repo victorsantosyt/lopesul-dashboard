@@ -5,45 +5,47 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  // 1) Operador admin (não sobrescreve senha se já existir)
+  console.log('🚀 Iniciando seed...');
+
   const senhaCriptografada = await bcrypt.hash('admin123', 10);
+
+  // ✅ Usa 'nome' no lugar de 'usuario'
   const admin = await prisma.operador.upsert({
-    where: { nome: 'admin' },           // <- campo correto no Prisma Client
-    update: {},                         // evite trocar senha sem querer
+    where: { nome: 'admin' },
+    update: {},
     create: { nome: 'admin', senha: senhaCriptografada, ativo: true },
   });
-  console.log(`Operador '${admin.nome}' pronto.`);
+  console.log(`✅ Operador '${admin.nome}' pronto.`);
 
-  // 2) Frota de exemplo (cria só se não houver nenhuma)
+  // Frota de exemplo
   let frota = await prisma.frota.findFirst();
   if (!frota) {
     frota = await prisma.frota.create({ data: { nome: 'Frota demo' } });
-    console.log(`Frota '${frota.nome}' criada.`);
-  } else {
-    console.log(`Usando frota existente (${frota.id}).`);
+    console.log(`🚌 Frota '${frota.nome}' criada.`);
   }
 
-  // 3) Vendas ligadas à frota (só se ainda não existirem)
+  // Vendas de exemplo
   const vendasCount = await prisma.venda.count({ where: { frotaId: frota.id } });
   if (vendasCount === 0) {
     await prisma.venda.createMany({
       data: [
-        { frotaId: frota.id, valor: 10.0 },
-        { frotaId: frota.id, valor: 15.0 },
-        { frotaId: frota.id, valor: 20.0 },
+        { frotaId: frota.id, valorCent: 1000 },
+        { frotaId: frota.id, valorCent: 2000 },
+        { frotaId: frota.id, valorCent: 3000 },
       ],
     });
-    console.log('Vendas de exemplo criadas.');
+    console.log('💰 Vendas de exemplo criadas.');
   } else {
-    console.log('Vendas já existem; nada a fazer.');
+    console.log('ℹ️ Vendas já existentes, nada a criar.');
   }
 }
 
 main()
   .catch((e) => {
-    console.error('Seed falhou:', e);
+    console.error('❌ Seed falhou:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
-  });
+  }
+  );

@@ -1,48 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-
-const API = "/api/operadores";
+import React, { useEffect, useState } from "react";
 
 export default function OperadoresPage() {
   const [operadores, setOperadores] = useState([]);
-  const [nome, setNome] = useState("");          // nome exibido na UI
+  const [nome, setNome] = useState("");
   const [senha, setSenha] = useState("");
-  const [ativo, setAtivo] = useState(true);      // pode não existir no DB; default true
-
-  const [modoEdicao, setModoEdicao] = useState(false);
+  const [ativo, setAtivo] = useState(true);
   const [editandoId, setEditandoId] = useState(null);
-
   const [loading, setLoading] = useState(false);
-  const [loadingLista, setLoadingLista] = useState(false);
 
-  // --- refs para navegação Enter ---
-  const formRef = useRef(null);
-  const nomeRef = useRef(null);
-  const senhaRef = useRef(null);
-
-  // garante string sempre (evita .trim() em undefined)
-  const safeNome  = (typeof nome  === "string" ? nome  : "").toString();
-  const safeSenha = (typeof senha === "string" ? senha : "").toString();
-
-  const podeSalvar = useMemo(() => {
-    if (loading) return false;
-    if (modoEdicao) return safeNome.trim().length > 0;                 // senha opcional no edit
-    return safeNome.trim().length > 0 && safeSenha.trim().length > 0;  // no create, ambos
-  }, [loading, modoEdicao, safeNome, safeSenha]);
+  const API = "/api/operadores";
 
   async function fetchOperadores() {
     try {
-      setLoadingLista(true);
-      const res = await fetch(API, { cache: "no-store" });
-      if (!res.ok) throw new Error("Falha ao listar operadores");
+      const res = await fetch(API);
       const data = await res.json();
-      setOperadores(Array.isArray(data) ? data : []);
+      setOperadores(data);
     } catch (e) {
-      console.error(e);
-      alert("Não foi possível carregar os operadores.");
-    } finally {
-      setLoadingLista(false);
+      console.error("Erro ao carregar operadores:", e);
     }
   }
 
@@ -51,250 +27,136 @@ export default function OperadoresPage() {
   }, []);
 
   async function handleCriar() {
-    const usuario = safeNome.trim();
-    const s = safeSenha.trim();
-    if (!usuario || !s) return;
+    const nomeVal = nome.trim();
+    const senhaVal = senha.trim();
+    if (!nomeVal || !senhaVal) return;
 
     setLoading(true);
     try {
-      const payload = { usuario, senha: s };
-      // se seu backend aceitar "ativo", pode incluir: payload.ativo = ativo;
-
+      const payload = { nome: nomeVal, senha: senhaVal, ativo };
       const res = await fetch(API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || "Erro ao cadastrar operador");
-      }
-      limparFormulario();
+
+      if (!res.ok) throw new Error("Erro ao cadastrar operador");
+
+      setNome("");
+      setSenha("");
+      setAtivo(true);
       fetchOperadores();
     } catch (e) {
-      console.error(e);
-      alert(e.message || "Erro ao cadastrar.");
+      alert(e.message);
     } finally {
       setLoading(false);
     }
   }
 
   async function handleEditar() {
-    const usuario = safeNome.trim();
-    if (!usuario || !editandoId) return;
+    const nomeVal = nome.trim();
+    if (!nomeVal || !editandoId) return;
 
     setLoading(true);
     try {
-      const payload = { usuario };
-      if (safeSenha.trim()) payload.senha = safeSenha.trim();
-      // payload.ativo = ativo; // habilite se existir no backend
+      const payload = { nome: nomeVal, ativo };
+      if (senha.trim()) payload.senha = senha.trim();
 
       const res = await fetch(`${API}/${editandoId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || "Erro ao salvar alterações");
-      }
-      cancelarEdicao();
+
+      if (!res.ok) throw new Error("Erro ao salvar alterações");
+
+      setEditandoId(null);
+      setNome("");
+      setSenha("");
       fetchOperadores();
     } catch (e) {
-      console.error(e);
-      alert(e.message || "Erro ao salvar.");
+      alert(e.message);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleDeletar(id) {
-    if (!confirm("Tem certeza que deseja excluir este operador?")) return;
+  async function handleExcluir(id) {
+    if (!confirm("Excluir operador?")) return;
+
     try {
-      const res = await fetch(`${API}/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || "Erro ao excluir");
-      }
+      await fetch(`${API}/${id}`, { method: "DELETE" });
       fetchOperadores();
     } catch (e) {
       console.error(e);
-      alert(e.message || "Erro ao excluir.");
     }
   }
-
-  function iniciarEdicao(op) {
-    setNome(op.usuario ?? op.nome ?? "");
-    setSenha("");
-    setAtivo(op.ativo ?? true);
-    setEditandoId(op.id);
-    setModoEdicao(true);
-    // foca no nome ao começar a editar
-    setTimeout(() => nomeRef.current?.focus(), 0);
-  }
-
-  function cancelarEdicao() {
-    setModoEdicao(false);
-    setEditandoId(null);
-    limparFormulario();
-    setTimeout(() => nomeRef.current?.focus(), 0);
-  }
-
-  function limparFormulario() {
-    setNome("");
-    setSenha("");
-    setAtivo(true);
-  }
-
-  function onSubmit(e) {
-    e.preventDefault();
-    if (!podeSalvar) return;
-    modoEdicao ? handleEditar() : handleCriar();
-  }
-
-  // --- handlers de teclado (Enter) ---
-  const goNext = (nextRef) => (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      nextRef?.current?.focus();
-    }
-  };
-  const submitOnEnter = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      formRef.current?.requestSubmit?.();
-    }
-  };
 
   return (
-    <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#1a2233] min-h-screen transition-colors">
-      <h1 className="text-2xl font-bold mb-4 text-gray-800 dark:text-white">Operadores</h1>
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold text-gray-800">Gerenciamento de Operadores</h1>
 
-      <form
-        ref={formRef}
-        onSubmit={onSubmit}
-        className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-end"
-      >
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">Nome</label>
-          <input
-            ref={nomeRef}
-            type="text"
-            placeholder="Nome do operador"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            // Enter -> foca senha
-                        onKeyDown={goNext(senhaRef)}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-[#232e47] text-gray-800 dark:text-gray-100"
-          />
-        </div>
+      <div className="flex gap-2">
+        <input
+          className="border p-2 rounded w-1/4"
+          placeholder="Nome"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+        />
+        <input
+          className="border p-2 rounded w-1/4"
+          placeholder="Senha"
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+        />
+        <button
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+          onClick={editandoId ? handleEditar : handleCriar}
+          disabled={loading}
+        >
+          {loading
+            ? "Salvando..."
+            : editandoId
+            ? "Salvar Alterações"
+            : "Criar Operador"}
+        </button>
+      </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">
-            {modoEdicao ? "Nova senha (opcional)" : "Senha"}
-          </label>
-          <input
-            ref={senhaRef}
-            type="password"
-            placeholder={modoEdicao ? "Nova senha (opcional)" : "Senha"}
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            onKeyDown={submitOnEnter}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-[#232e47] text-gray-800 dark:text-gray-100"
-          />
-        </div>
-
-        {/* Só mantenha esse toggle se o backend realmente tiver o campo "ativo" */}
-        <label className="flex items-center gap-2 select-none text-sm text-gray-700 dark:text-gray-200">
-          <input
-            type="checkbox"
-            checked={ativo}
-            onChange={(e) => setAtivo(e.target.checked)}
-            className="accent-blue-600 w-4 h-4"
-          />
-          Ativo
-        </label>
-
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={!podeSalvar || loading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded"
-          >
-            {loading ? "Aguarde..." : modoEdicao ? "Salvar" : "Cadastrar"}
-          </button>
-
-          {modoEdicao && (
-            <button
-              type="button"
-              onClick={cancelarEdicao}
-              disabled={loading}
-              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+      <div>
+        <h2 className="text-xl font-semibold mt-4 mb-2">Operadores Cadastrados</h2>
+        <ul className="divide-y border rounded">
+          {operadores.map((op) => (
+            <li
+              key={op.id}
+              className="flex justify-between items-center p-2 hover:bg-gray-50"
             >
-              Cancelar
-            </button>
-          )}
-        </div>
-      </form>
-
-      <div className="overflow-x-auto rounded-xl shadow bg-white dark:bg-[#232e47] transition-colors">
-        <table className="w-full text-sm text-left text-gray-700 dark:text-gray-200">
-          <thead>
-            <tr className="bg-gray-200 dark:bg-[#1a2233] text-left text-gray-700 dark:text-gray-300">
-              <th className="p-3">Nome</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 w-56">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loadingLista ? (
-              <tr>
-                <td colSpan={3} className="p-3 text-gray-500 dark:text-gray-400">
-                  Carregando...
-                </td>
-              </tr>
-            ) : operadores.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="p-3 text-gray-500 dark:text-gray-400">
-                  Nenhum operador ainda.
-                </td>
-              </tr>
-            ) : (
-              operadores.map((op) => (
-                <tr key={op.id} className="border-t border-gray-200 dark:border-gray-700">
-                  <td className="p-3">{op.usuario ?? op.nome}</td>
-                  <td className="p-3">
-                    {(op.ativo ?? true) ? (
-                      <span className="inline-flex items-center gap-1 text-green-600">
-                        ● <span className="text-xs">Ativo</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-gray-400">
-                        ● <span className="text-xs">Inativo</span>
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => iniciarEdicao(op)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDeletar(op.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
-                      >
-                        Excluir
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              <div>
+                <span className="font-medium">{op.nome}</span>{" "}
+                <span className="text-sm text-gray-500">
+                  ({op.ativo ? "Ativo" : "Inativo"})
+                </span>
+              </div>
+              <div className="space-x-2">
+                <button
+                  className="text-blue-600"
+                  onClick={() => {
+                    setEditandoId(op.id);
+                    setNome(op.nome);
+                    setAtivo(op.ativo);
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  className="text-red-600"
+                  onClick={() => handleExcluir(op.id)}
+                >
+                  Excluir
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

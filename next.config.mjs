@@ -7,9 +7,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    allowedOrigins: ['*'],
+    // ✅ Next 15.5 espera um OBJETO aqui (boolean gera warning)
+    serverActions: {
+      // opcional: você pode ajustar limites se usar Server Actions
+      // bodySizeLimit: "2mb",
+    },
   },
-  
+
   webpack: (config, { isServer }) => {
     // Alias @ -> src
     config.resolve.alias = {
@@ -17,13 +21,18 @@ const nextConfig = {
       "@": path.resolve(process.cwd(), "src"),
     };
 
-    // ⛔ Evita que o Next tente empacotar módulos nativos
+    // ✅ mata "Can't resolve 'vertx'"
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      vertx: false,
+    };
+
+    // ⛔ evita empacotar módulos nativos no lado do server
     if (isServer) {
       const asCommonJs = {
         ssh2: "commonjs ssh2",
         "node-ssh": "commonjs node-ssh",
       };
-      // mantém qualquer externals já existentes e adiciona os nossos
       if (Array.isArray(config.externals)) {
         config.externals.push(asCommonJs);
       } else {
@@ -39,7 +48,7 @@ const nextConfig = {
   async rewrites() {
     return [
       { source: "/pagamentos", destination: "/pagamento.html" },
-      { source: "/pagamento",  destination: "/pagamento.html" },
+      { source: "/pagamento", destination: "/pagamento.html" },
     ];
   },
 
