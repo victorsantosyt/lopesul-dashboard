@@ -1,343 +1,122 @@
 // src/lib/mikrotik.js
+import MikroNode from "mikronode-ng2";
 
-// --- Regex úteis ---
-const ipRegex = /(\d{1,3}\.){3}\d{1,3}\/\d{1,2}/;
-const ipv4Only = /(\d{1,3}\.){3}\d{1,3}/;
-const rttRegex = /avg(?:\s*=|:)\s*([0-9.,]+)\s*ms|time=([0-9.,]+)\s*ms/i;
-const receivedRegex = /received(?: =|:)?\s*(\d+)/i;
-const lossRegex = /loss(?: =|:)?\s*([0-9]+)%/i;
+function getConnection() {
+  const host = process.env.MIKROTIK_HOST;
+  const port = Number(process.env.MIKROTIK_PORT || 8728);
+  const user = process.env.MIKROTIK_USER;
+  const pass = process.env.MIKROTIK_PASS;
 
-// --- SSH helpers ---
-async function connectSSH({ host, user, pass, port = 22, privateKey, readyTimeout = 10000 }) {
-  const { NodeSSH } = await import("node-ssh"); // import dinâmico p/ evitar bundler mexendo em binário
-  const ssh = new NodeSSH();
-  const opts = {
+  if (!host || !user || !pass) {
+    throw new Error("Faltam variáveis de ambiente: MIKROTIK_HOST/USER/PASS");
+  }
+
+  return new MikroNode.Connection({
     host,
-    username: user,
     port,
-    readyTimeout,
-    tryKeyboard: false,
-  };
-  if (privateKey) opts.privateKey = privateKey;
-  else opts.password = pass;
+    user,
+    password: pass,
+    timeout: 5000,
+  });
+}
 
+/** ============================
+ * PING TESTE (usa API, não SSH)
+ * ============================ */
+export async function getStarlinkStatus() {
+  const conn = getConnection();
   try {
-    await ssh.connect(opts);
-    return ssh;
+    await conn.connect();
+    const chan = conn.openChannel();
+
+    const pingTarget = process.env.STARLINK_PING_TARGET || "1.1.1.1";
+
+    const res = await chan.write(`/ping address=${pingTarget} count=3`);
+    const data = res.data.toString();
+
+    const match = data.match(/time=(\d+(?:\.\d+)?)ms/);
+    const rtt = match ? parseFloat(match[1]) : null;
+
+    return { ok: true, connected: true, rtt_ms: rtt };
   } catch (err) {
-    try { ssh.dispose(); } catch (_) {}
-    throw new Error(`SSH connection failed: ${String(err)}`);
-  }
-}
-
-async function execWithTimeout(sshClient, cmd, { timeoutMs = 4000 } = {}) {
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    try { sshClient.dispose(); } catch (_) {}
-  }, timeoutMs);
-
-  try {
-    const res = await sshClient.execCommand(cmd, { cwd: "/" });
-    const out = (res.stdout || "").trim();
-    const err = (res.stderr || "").trim();
-    if (timedOut) throw new Error("command timeout");
-    return { out, err };
+    console.error("[MIKROTIK] API ping error:", err.message);
+    return { ok: false, error: err.message };
   } finally {
-    clearTimeout(timer);
+    conn.close();
   }
 }
 
 /** ============================
- * getStarlinkStatus
+ * LISTA SESSÕES PPP
  * ============================ */
-async function getStarlinkStatus({
-  host,
-  user,
-  pass,
-  port = Number(process.env.MIKROTIK_SSH_PORT || 22),
-  privateKey,
-  readyTimeout = Number(process.env.MIKROTIK_SSH_READY_TIMEOUT_MS || 10000),
-  starIface = process.env.MIKROTIK_STARLINK_IFACE || "ether1",
-  pingTarget = process.env.STARLINK_PING_TARGET || "1.1.1.1",
-  pingCount = 5,
-} = {}) {
-  if (!host || !user || (!pass && !privateKey)) {
-    throw new Error("Missing MIKROTIK_HOST / MIKROTIK_USER / MIKROTIK_PASS (or privateKey)");
-  }
-  if (Number(port) === 8728) {
-    throw new Error("Configured port is 8728 (RouterOS API). This function uses SSH.");
-  }
-
-  const ssh = await connectSSH({ host, user, pass, port, privateKey, readyTimeout });
-
+export async function listPppActive() {
+  const conn = getConnection();
   try {
-    // identity
-    let identity = null;
-    try {
-      const identRes = await execWithTimeout(ssh, "/system identity print", { timeoutMs: 2000 });
-      identity = (identRes.out || identRes.err || "").split(/\r?\n/).find(Boolean) || null;
-    } catch {}
-
-    // iface monitor
-    let monitorOut = "";
-    let linkUp = false;
-    try {
-      const monitorCmd = `/interface ethernet monitor ${starIface} once`;
-      const monitorRes = await execWithTimeout(ssh, monitorCmd, { timeoutMs: 2500 });
-      monitorOut = (monitorRes.out || monitorRes.err || "").trim().toLowerCase();
-      linkUp = /link-ok|running|up|1gbps|100mbps/.test(monitorOut)
-        || /rx:|tx:|speed:/i.test(monitorOut);
-    } catch {}
-
-    // ip on iface
-    let ipOut = "";
-    let ip = null;
-    let ipNet = null;
-    try {
-      const ipCmd = `/ip address print where interface=${starIface}`;
-      const ipRes = await execWithTimeout(ssh, ipCmd, { timeoutMs: 2000 });
-      ipOut = (ipRes.out || ipRes.err || "").trim();
-      const ipMatch = ipOut.match(ipRegex) || ipOut.match(ipv4Only);
-      if (ipMatch) {
-        ipNet = ipMatch[0];
-        const onlyIp = ipNet.match(ipv4Only);
-        ip = onlyIp ? onlyIp[0] : null;
-      }
-    } catch {}
-
-    // ping
-    let pingOut = "";
-    let received = null;
-    let lossPct = null;
-    let rttMs = null;
-    let pingOk = false;
-    try {
-      const pingCmd = `/ping address=${pingTarget} count=${pingCount}`;
-      const pingRes = await execWithTimeout(ssh, pingCmd, { timeoutMs: 3500 });
-      pingOut = (pingRes.out || pingRes.err || "").trim();
-      const recMatch = pingOut.match(receivedRegex);
-      if (recMatch) received = Number(recMatch[1]);
-      const lossMatch = pingOut.match(lossRegex);
-      if (lossMatch) lossPct = Number(lossMatch[1]);
-      const rttMatch = pingOut.match(rttRegex);
-      if (rttMatch) rttMs = Number(rttMatch[1] || rttMatch[2]);
-      else {
-        const mm = pingOut.match(/min\/avg\/max\/mdev\s*=\s*([0-9.,\/\s]+)/i);
-        if (mm) {
-          const parts = mm[1].split("/").map((s) => s.replace(",", ".").trim());
-          if (parts[1]) rttMs = Number(parts[1]);
-        }
-      }
-      pingOk = typeof received === "number" ? received > 0 : /bytes=|reply from|time=|ttl=/i.test(pingOut);
-    } catch {}
-
-    return {
-      ok: true,
-      connected: true,
-      identity,
-      internet: { ok: pingOk, rtt_ms: rttMs ?? null, received, loss_pct: lossPct },
-      starlink: { iface: starIface, link: linkUp, ip: ip ?? null, ipNet: ipNet ?? null, ping_ok: pingOk, ping_raw: pingOut || null },
-      raw: { monitorOut, ipOut, pingOut },
-      checkedAt: new Date().toISOString(),
-    };
+    await conn.connect();
+    const chan = conn.openChannel();
+    const res = await chan.write("/ppp active print detail");
+    return { ok: true, data: res.data.toString() };
+  } catch (err) {
+    console.error("[MIKROTIK] API list error:", err.message);
+    return { ok: false, error: err.message };
   } finally {
-    try { ssh.dispose(); } catch (_){}
+    conn.close();
   }
 }
 
 /** ============================
- * revogarAcesso
+ * LIBERAR ACESSO
  * ============================ */
-async function revogarAcesso({
-  host,
-  user,
-  pass,
-  port = Number(process.env.MIKROTIK_SSH_PORT || 22),
-  privateKey,
-  readyTimeout = Number(process.env.MIKROTIK_SSH_READY_TIMEOUT_MS || 10000),
-  ip,
-  mac,
-  sessionId,
-  cmd,
-  timeoutMs = 5000,
-} = {}) {
-  if (!host || !user || (!pass && !privateKey)) {
-    throw new Error("Missing MIKROTIK_HOST / MIKROTIK_USER / MIKROTIK_PASS (or privateKey)");
-  }
-  if (Number(port) === 8728) {
-    throw new Error("Configured port is 8728 (RouterOS API). revogarAcesso uses SSH.");
-  }
-
-  const ssh = await connectSSH({ host, user, pass, port, privateKey, readyTimeout });
-
+export async function liberarAcesso({ ip, mac, username, comment = "painel" } = {}) {
+  const conn = getConnection();
   try {
-    if (cmd && typeof cmd === "string") {
-      const res = await execWithTimeout(ssh, cmd, { timeoutMs });
-      return { ok: true, out: res.out, err: res.err };
-    }
+    await conn.connect();
+    const chan = conn.openChannel();
 
-    const results = [];
+    const cmds = [];
+    if (ip) cmds.push(`/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${comment}"`);
+    if (mac) cmds.push(`/interface/wireless/access-list/add mac-address=${mac} comment="${comment}"`);
+    if (username) cmds.push(`/ip/hotspot/user/add name=${username} password=${username}`);
 
-    if (ip) {
-      const removeIpCmd = `/ip firewall address-list remove [find address=${ip}]`;
-      try { const r = await execWithTimeout(ssh, removeIpCmd, { timeoutMs }); results.push({ cmd: removeIpCmd, out: r.out, err: r.err }); }
-      catch (e) { results.push({ cmd: removeIpCmd, error: String(e) }); }
-    }
+    for (const cmd of cmds) await chan.write(cmd);
 
-    if (mac) {
-      const removeMacCmd = `/interface wireless access-list remove [find mac-address=${mac}]`;
-      try { const r = await execWithTimeout(ssh, removeMacCmd, { timeoutMs }); results.push({ cmd: removeMacCmd, out: r.out, err: r.err }); }
-      catch (e) { results.push({ cmd: removeMacCmd, error: String(e) }); }
-    }
-
-    if (sessionId) {
-      const kickCmd = `/ppp active remove [find .id=${sessionId}]`;
-      try { const r = await execWithTimeout(ssh, kickCmd, { timeoutMs }); results.push({ cmd: kickCmd, out: r.out, err: r.err }); }
-      catch (e) { results.push({ cmd: kickCmd, error: String(e) }); }
-    }
-
-    if (results.length === 0) {
-      return { ok: false, message: "Nenhuma ação executada. Forneça ip|mac|sessionId ou cmd." };
-    }
-
-    return { ok: true, results };
+    return { ok: true, cmds };
+  } catch (err) {
+    console.error("[MIKROTIK] liberarAcesso API error:", err.message);
+    return { ok: false, error: err.message };
   } finally {
-    try { ssh.dispose(); } catch (_){}
+    conn.close();
   }
 }
 
 /** ============================
- * liberarAcesso
+ * REVOGAR ACESSO
  * ============================ */
-async function liberarAcesso({
-  host,
-  user,
-  pass,
-  port = Number(process.env.MIKROTIK_SSH_PORT || 22),
-  privateKey,
-  readyTimeout = Number(process.env.MIKROTIK_SSH_READY_TIMEOUT_MS || 10000),
-  ip,
-  mac,
-  username,
-  comment = "liberado_por_painel",
-  cmd,
-  timeoutMs = 5000,
-} = {}) {
-  if (!host || !user || (!pass && !privateKey)) {
-    throw new Error("Missing MIKROTIK_HOST / MIKROTIK_USER / MIKROTIK_PASS (or privateKey)");
-  }
-  if (Number(port) === 8728) {
-    throw new Error("Configured port is 8728 (RouterOS API). liberarAcesso uses SSH.");
-  }
-
-  const ssh = await connectSSH({ host, user, pass, port, privateKey, readyTimeout });
-
+export async function revogarAcesso({ ip, mac, username } = {}) {
+  const conn = getConnection();
   try {
-    if (cmd && typeof cmd === "string") {
-      const res = await execWithTimeout(ssh, cmd, { timeoutMs });
-      return { ok: true, out: res.out, err: res.err };
-    }
+    await conn.connect();
+    const chan = conn.openChannel();
 
-    const results = [];
+    const cmds = [];
+    if (ip) cmds.push(`/ip/firewall/address-list/remove [find address=${ip}]`);
+    if (mac) cmds.push(`/interface/wireless/access-list/remove [find mac-address=${mac}]`);
+    if (username) cmds.push(`/ip/hotspot/user/remove [find name=${username}]`);
 
-    if (ip) {
-      const addIpCmd = `/ip firewall address-list add list=paid_clients address=${ip} comment="${comment}"`;
-      try { const r = await execWithTimeout(ssh, addIpCmd, { timeoutMs }); results.push({ cmd: addIpCmd, out: r.out, err: r.err }); }
-      catch (e) { results.push({ cmd: addIpCmd, error: String(e) }); }
-    }
+    for (const cmd of cmds) await chan.write(cmd);
 
-    if (mac) {
-      const addMacCmd = `/interface wireless access-list add mac-address=${mac} comment="${comment}"`;
-      try { const r = await execWithTimeout(ssh, addMacCmd, { timeoutMs }); results.push({ cmd: addMacCmd, out: r.out, err: r.err }); }
-      catch (e) { results.push({ cmd: addMacCmd, error: String(e) }); }
-    }
-
-    if (username) {
-      const addUserCmd = `/ip hotspot user add name=${username} password=${username}`;
-      try { const r = await execWithTimeout(ssh, addUserCmd, { timeoutMs }); results.push({ cmd: addUserCmd, out: r.out, err: r.err }); }
-      catch (e) { results.push({ cmd: addUserCmd, error: String(e) }); }
-    }
-
-    if (results.length === 0) {
-      return { ok: false, message: "Nenhuma ação executada. Forneça ip|mac|username ou cmd." };
-    }
-
-    return { ok: true, results };
+    return { ok: true, cmds };
+  } catch (err) {
+    console.error("[MIKROTIK] revogarAcesso API error:", err.message);
+    return { ok: false, error: err.message };
   } finally {
-    try { ssh.dispose(); } catch (_){}
+    conn.close();
   }
 }
-
-/** ============================
- * listPppActive
- * ============================ */
-async function listPppActive({
-  host,
-  user,
-  pass,
-  port = Number(process.env.MIKROTIK_SSH_PORT || 22),
-  privateKey,
-  readyTimeout = Number(process.env.MIKROTIK_SSH_READY_TIMEOUT_MS || 10000),
-  timeoutMs = 4000,
-} = {}) {
-  if (!host || !user || (!pass && !privateKey)) {
-    throw new Error("Missing MIKROTIK_HOST / MIKROTIK_USER / MIKROTIK_PASS (or privateKey)");
-  }
-  if (Number(port) === 8728) {
-    throw new Error("Configured port is 8728 (RouterOS API). listPppActive uses SSH.");
-  }
-
-  const ssh = await connectSSH({ host, user, pass, port, privateKey, readyTimeout });
-
-  try {
-    const res = await execWithTimeout(ssh, `/ppp active print`, { timeoutMs });
-    const raw = (res.out || res.err || "").trim();
-
-    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const items = [];
-
-    for (const line of lines) {
-      const obj = {};
-      const parts = line.split(/\s+/);
-      for (const p of parts) {
-        if (p.includes("=")) {
-          const [k, ...rest] = p.split("=");
-          obj[k.trim()] = rest.join("=").trim();
-        }
-      }
-      if (Object.keys(obj).length === 0) items.push({ raw: line });
-      else items.push(obj);
-    }
-
-    return { ok: true, raw, items };
-  } finally {
-    try { ssh.dispose(); } catch (_){}
-  }
-}
-
-// === ALIASES (const; sem export direto para evitar duplicidade) ===
-const revogarCliente = (options = {}) => revogarAcesso(options);
-const liberarClienteNoMikrotik = (options = {}) => liberarAcesso(options);
-const liberarCliente = (options = {}) => liberarAcesso(options);
-
-// === Exports centralizados (nomeados + default) ===
-export {
-  getStarlinkStatus,
-  revogarAcesso,
-  revogarCliente,
-  liberarAcesso,
-  liberarCliente,
-  liberarClienteNoMikrotik,
-  listPppActive,
-};
 
 export default {
   getStarlinkStatus,
-  revogarAcesso,
-  revogarCliente,
-  liberarAcesso,
-  liberarCliente,
-  liberarClienteNoMikrotik,
   listPppActive,
+  liberarAcesso,
+  revogarAcesso,
 };

@@ -1,93 +1,72 @@
 // src/app/api/mikrotik/status/route.js
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
-import { NextResponse } from 'next/server';
-import { RouterOSClient } from 'routeros-client';
+import { NextResponse } from "next/server";
+import MikroNode from "mikronode-ng2"; // leve e direto para API do Mikrotik
 
-// helpers de env (aceita sinônimos)
-const yes = (v) => ['1', 'true', 'yes', 'on'].includes(String(v ?? '').toLowerCase());
+// helpers de env
+const yes = (v) => ["1", "true", "yes", "on"].includes(String(v ?? "").toLowerCase());
 function getCfg() {
-  const host =
-    process.env.MIKROTIK_HOST ||
-    process.env.MIKOTIK_HOST || // fallback p/ typo
-    null;
-
-  const user =
-    process.env.MIKROTIK_USER ||
-    process.env.MIKROTIK_USERNAME ||
-    null;
-
-  const password =
-    process.env.MIKROTIK_PASS ||
-    process.env.MIKROTIK_PASSWORD ||
-    null;
-
-  const ssl = yes(process.env.MIKROTIK_SSL) || yes(process.env.MIKROTIK_SECURE);
-  const port = Number(
-    process.env.MIKROTIK_PORT ||
-      process.env.PORTA_MIKROTIK ||
-      (ssl ? 8729 : 8728)
-  );
-
+  const host = process.env.MIKROTIK_HOST;
+  const user = process.env.MIKROTIK_USER;
+  const password = process.env.MIKROTIK_PASS;
+  const port = Number(process.env.MIKROTIK_PORT || 28728); // via túnel proxy
   const timeout = Number(process.env.MIKROTIK_TIMEOUT_MS || 8000);
-
-  const defaultList =
-    process.env.MIKROTIK_PAID_LIST ||
-    process.env.LISTA_PAGA_MIKROTIK ||
-    'paid_clients';
-
-  return { host, user, password, ssl, port, timeout, defaultList };
+  const ssl = yes(process.env.MIKROTIK_SSL) || yes(process.env.MIKROTIK_SECURE);
+  const defaultList = process.env.MIKROTIK_PAID_LIST || "paid_clients";
+  return { host, user, password, port, ssl, timeout, defaultList };
 }
 
 export async function GET(req) {
   const cfg = getCfg();
+
   if (!cfg.host || !cfg.user || !cfg.password) {
     return NextResponse.json(
-      { ok: false, error: 'Configuração Mikrotik ausente (host/user/password)' },
+      { ok: false, error: "Configuração Mikrotik ausente (host/user/password)" },
       { status: 400 }
     );
   }
 
-  let api;
   try {
     const { searchParams } = new URL(req.url);
-    const list = searchParams.get('list') || cfg.defaultList;
-    const limitRaw = parseInt(searchParams.get('limit') || '100', 10);
+    const list = searchParams.get("list") || cfg.defaultList;
+    const limitRaw = parseInt(searchParams.get("limit") || "100", 10);
     const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 100, 200));
 
-    api = new RouterOSClient({
+    // conexão direta via proxy
+    const conn = new MikroNode.Connection({
       host: cfg.host,
-      user: cfg.user,
-      password: cfg.password, // <- chave correta
       port: cfg.port,
-      ssl: cfg.ssl,           // <- chave correta
+      user: cfg.user,
+      password: cfg.password,
       timeout: cfg.timeout,
-      // rejectUnauthorized: false, // se usar cert self-signed
     });
 
-    await api.connect();
+    await conn.connect();
+    const chan = conn.openChannel();
 
-    // identity (nome do roteador)
-    let identity = null;
-    try {
-      const idRes = await api.menu('/system/identity').print();
-      identity = Array.isArray(idRes) && idRes[0]?.name ? idRes[0].name : null;
-    } catch {}
+    // pega o nome do roteador
+    const ident = await chan.write("/system/identity/print");
+    const identity =
+      Array.isArray(ident) && ident[0]?.name ? ident[0].name : "Desconhecido";
 
-    // address-list
-    const raw = await api.menu('/ip/firewall/address-list').print({
-      where: [['list', '=', list]],
-    });
+    // lista de clientes pagos
+    const raw = await chan.write([
+      "/ip/firewall/address-list/print",
+      `?list=${list}`,
+    ]);
+
+    conn.close(true);
 
     const items = (Array.isArray(raw) ? raw : [])
       .slice(0, limit)
       .map((x) => ({
-        id: x['.id'] || x.id || null,
+        id: x[".id"] || x.id || null,
         address: x.address || null,
         list: x.list || null,
         comment: x.comment || null,
-        disabled: x.disabled === 'true' || x.disabled === true,
-        ...(x['creation-time'] ? { creationTime: x['creation-time'] } : {}),
+        disabled: x.disabled === "true" || x.disabled === true,
+        creationTime: x["creation-time"] || null,
       }));
 
     return NextResponse.json({
@@ -98,12 +77,13 @@ export async function GET(req) {
       items,
     });
   } catch (e) {
-    console.error('GET /api/mikrotik/status error:', e?.message, e?.stack || e);
+    console.error("GET /api/mikrotik/status error:", e?.message);
+    const status = /timeout|ECONNREFUSED|EHOSTUNREACH/i.test(e.message)
+      ? 502
+      : 500;
     return NextResponse.json(
-      { ok: false, error: 'Falha ao consultar status do Mikrotik' },
-      { status: 502 }
+      { ok: false, error: e.message || "Falha ao consultar status do Mikrotik" },
+      { status }
     );
-  } finally {
-    try { await api?.close(); } catch {}
   }
 }

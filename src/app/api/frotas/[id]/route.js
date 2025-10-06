@@ -1,10 +1,11 @@
 // src/app/api/frotas/[id]/route.js
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { checkAnyOnline } from '@/lib/netcheck';
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+import { getStarlinkStatus } from '@/lib/mikrotik';
 
 export async function GET(req, { params }) {
   try {
@@ -33,7 +34,7 @@ export async function GET(req, { params }) {
           },
         },
         dispositivos: {
-          select: { ip: true }, // <<-- TROQUE AQUI se o campo for outro nome
+          select: { ip: true },
           take: 100,
         },
       },
@@ -47,9 +48,9 @@ export async function GET(req, { params }) {
     const vendasPeriodo = await prisma.venda.findMany({
       where: {
         frotaId: id,
-        data: { gte: since },      // ajuste se seu campo for createdAt
+        data: { gte: since },
       },
-      select: { valorCent: true }, // ajuste se for "valor" em reais
+      select: { valorCent: true },
       take: 10000,
     });
 
@@ -58,12 +59,28 @@ export async function GET(req, { params }) {
       0
     );
 
-    // Status real pelo(s) IP(s)
-    const ips = (frota.dispositivos ?? []).map((d) => d?.ip).filter(Boolean); // <<-- ajuste se renomear
+    // Status técnico (Mikrotik)
+    const ips = (frota.dispositivos ?? []).map((d) => d?.ip).filter(Boolean);
     let status = 'desconhecido';
+    let pingMs = null;
+    let perda = null;
+    let ipAtivo = ips[0] ?? null;
+
     if (ips.length > 0) {
-      const { online } = await checkAnyOnline(ips);
-      status = online ? 'online' : 'offline';
+      try {
+        const result = await getStarlinkStatus({
+          host: process.env.MIKROTIK_HOST,
+          user: process.env.MIKROTIK_USER,
+          pass: process.env.MIKROTIK_PASS,
+        });
+        status = result?.internet?.ok ? 'online' : 'offline';
+        pingMs = result?.internet?.rtt_ms ?? null;
+        perda = result?.internet?.loss_pct ?? null;
+      } catch (err) {
+        console.warn('[frotas/id] Falha ao obter status Mikrotik:', err.message);
+        const { online } = await checkAnyOnline(ips);
+        status = online ? 'online' : 'offline';
+      }
     } else if ((frota._count?.dispositivos ?? 0) === 0) {
       status = 'offline';
     }
@@ -76,9 +93,12 @@ export async function GET(req, { params }) {
 
         acessos: Number(frota._count?.dispositivos ?? 0),
         status,
+        ipAtivo,
+        pingMs,
+        perdaPacotes: perda,
+
         valorTotal: Number(receitaCentavos / 100),
         valorTotalCentavos: Number(receitaCentavos),
-
         vendasTotal: Number(frota._count?.vendas ?? 0),
         vendasPeriodoQtd: (vendasPeriodo ?? []).length,
         periodoDias: days,

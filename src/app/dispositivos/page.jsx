@@ -16,10 +16,11 @@ export default function DispositivosPage() {
       const res = await fetch('/api/dispositivos', { cache: 'no-store' });
       if (!res.ok) throw new Error('Falha ao buscar dispositivos');
       const data = await res.json();
-      setDispositivos(Array.isArray(data) ? data : []);
+      setDispositivos(Array.isArray(data) ? data : data.items ?? []);
     } catch (err) {
       console.error('Erro ao carregar dispositivos:', err);
-      setErro('Não foi possível carregar os dispositivos.');
+      setErro('Não foi possível carregar os dispositivos. Verifique sua conexão ou o backend.');
+      setDispositivos([]);
     } finally {
       setCarregando(false);
     }
@@ -34,7 +35,7 @@ export default function DispositivosPage() {
       {/* Cabeçalho + botão Status */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
-          Painel Técnico - Dispositivos
+          Painel Técnico — Dispositivos
         </h1>
 
         <Link
@@ -62,38 +63,40 @@ export default function DispositivosPage() {
         <p className="text-red-600 dark:text-red-400 mb-3">{erro}</p>
       )}
 
-      {!carregando && !erro && (dispositivos.length === 0 ? (
-        <p className="text-gray-400 dark:text-gray-500">Nenhum dispositivo cadastrado no momento.</p>
-      ) : (
-        <ul className="space-y-3">
-          {dispositivos.map((d) => (
-            <li
-              key={d.id}
-              className="bg-white dark:bg-[#232e47] p-4 border border-gray-200 dark:border-gray-700 rounded-lg shadow flex justify-between items-center transition-colors"
-            >
-              <div className="space-y-1">
-                <p className="text-gray-800 dark:text-gray-100">
-                  <strong>IP:</strong> {d.ip}
-                </p>
-                <p className="text-gray-800 dark:text-gray-100">
-                  <strong>Frota:</strong>{' '}
-                  {d.frota?.id || d.frotaId || 'Sem frota'}
-                </p>
-                <p className="text-gray-500 dark:text-gray-300 text-sm">
-                  <strong>Criado em:</strong>{' '}
-                  {d.criadoEm ? new Date(d.criadoEm).toLocaleString('pt-BR') : '-'}
-                </p>
-              </div>
-
-              {/* Espaço para ações futuras */}
-              {/* <div className="flex gap-2">
-                <button className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white">Editar</button>
-                <button className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white">Remover</button>
-              </div> */}
-            </li>
-          ))}
-        </ul>
-      ))}
+      {!carregando && !erro && (
+        <>
+          {dispositivos.length === 0 ? (
+            <p className="text-gray-400 dark:text-gray-500">
+              Nenhum dispositivo cadastrado no momento.
+            </p>
+          ) : (
+            <ul className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {dispositivos.map((d) => (
+                <li
+                  key={d.id}
+                  className="bg-white dark:bg-[#232e47] p-4 border border-gray-200 dark:border-gray-700 rounded-xl shadow transition-all hover:shadow-lg"
+                >
+                  <div className="space-y-1">
+                    <p className="text-gray-800 dark:text-gray-100">
+                      <strong>IP:</strong> {d.ip ?? '—'}
+                    </p>
+                    <p className="text-gray-800 dark:text-gray-100">
+                      <strong>Frota:</strong>{' '}
+                      {d.frota?.nome || d.frotaId || 'Sem frota'}
+                    </p>
+                    <p className="text-gray-500 dark:text-gray-300 text-sm">
+                      <strong>Criado em:</strong>{' '}
+                      {d.criadoEm
+                        ? new Date(d.criadoEm).toLocaleString('pt-BR')
+                        : '-'}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }

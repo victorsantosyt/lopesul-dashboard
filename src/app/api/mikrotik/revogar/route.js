@@ -1,10 +1,8 @@
 // src/app/api/mikrotik/revogar/route.js
-export const runtime = 'nodejs';
+import { NextResponse } from "next/server";
+import MikroNode from "mikronode-ng2";
 
-import { NextResponse } from 'next/server';
-// ajuste: importa default e desestrutura
-import mikrotik from '@/lib/mikrotik';
-const { revogarAcesso } = mikrotik;
+export const runtime = "nodejs";
 
 const ipv4 =
   /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
@@ -15,9 +13,8 @@ function isValidIp(s) {
   return ipv4.test(s) || ipv6.test(s);
 }
 
-// list: somente [a-zA-Z0-9_-], 1..32
 function sanitizeListName(s) {
-  if (typeof s !== 'string') return undefined;
+  if (typeof s !== "string") return undefined;
   const ok = s.trim();
   return /^[A-Za-z0-9_-]{1,32}$/.test(ok) ? ok : undefined;
 }
@@ -25,20 +22,63 @@ function sanitizeListName(s) {
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
-    const ip = (body?.ip || '').trim();
-    const list = sanitizeListName(body?.list);
+    const ip = (body?.ip || "").trim();
+    const list = sanitizeListName(body?.list) || "paid_clients";
 
     if (!ip || !isValidIp(ip)) {
-      return NextResponse.json({ ok: false, error: 'IP inválido' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "IP inválido" }, { status: 400 });
     }
 
-    const r = await revogarAcesso({ ip, list });
-    // r: { ok, removed, list, ip, reason? }
-    return NextResponse.json({ ok: r.ok, ...r }, { status: 200 });
+    const HOST = process.env.MIKROTIK_HOST;
+    const PORT = Number(process.env.MIKROTIK_PORT || 28728);
+    const USER = process.env.MIKROTIK_USER;
+    const PASS = process.env.MIKROTIK_PASS;
+
+    if (!HOST || !USER || !PASS) {
+      return NextResponse.json(
+        { ok: false, error: "Variáveis MIKROTIK_* ausentes" },
+        { status: 400 }
+      );
+    }
+
+    // --- Conecta via API RouterOS ---
+    const conn = new MikroNode.Connection({
+      host: HOST,
+      port: PORT,
+      user: USER,
+      password: PASS,
+      timeout: 5000,
+    });
+
+    await conn.connect();
+    const chan = conn.openChannel();
+
+    // --- Executa remoção da lista ---
+    const cmd = [
+      `/ip/firewall/address-list/remove`,
+      `=numbers=[find list=${list} address=${ip}]`,
+    ];
+
+    await chan.write(cmd);
+    conn.close(true);
+
+    console.log(`[MIKROTIK] IP ${ip} removido da lista ${list}`);
+
+    return NextResponse.json({
+      ok: true,
+      ip,
+      list,
+      removed: true,
+      message: `IP ${ip} removido da lista ${list}`,
+    });
   } catch (e) {
-    const msg = String(e?.message || e);
-    console.error('POST /api/mikrotik/revogar error:', msg, e?.stack || e);
-    const status = /timeout|ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH|TLS|CERT/i.test(msg) ? 502 : 500;
-    return NextResponse.json({ ok: false, error: 'Falha ao revogar acesso' }, { status });
+    console.error("POST /api/mikrotik/revogar error:", e.message);
+    const status = /timeout|ECONNREFUSED|EHOSTUNREACH/i.test(e.message)
+      ? 502
+      : 500;
+    return NextResponse.json(
+      { ok: false, error: e.message || "Falha ao revogar acesso" },
+      { status }
+    );
   }
 }

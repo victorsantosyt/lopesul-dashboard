@@ -1,3 +1,4 @@
+// src/app/api/liberar-acesso/route.js
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -9,15 +10,7 @@ const { liberarCliente } = mikrotik;
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
-
-    const {
-      externalId, // agora corresponde ao code do Pedido
-      pagamentoId, // id do Pedido
-      txid,       // providerId da Charge
-      ip,
-      mac,
-      linkOrig,
-    } = body || {};
+    const { externalId, pagamentoId, txid, ip, mac, linkOrig } = body || {};
 
     if (!externalId && !pagamentoId && !txid) {
       return NextResponse.json(
@@ -28,17 +21,17 @@ export async function POST(req) {
 
     let pedido = null;
 
-    // buscar pelo code (externalId)
+    // busca por code
     if (externalId) {
       pedido = await prisma.pedido.findUnique({ where: { code: externalId } });
     }
 
-    // buscar pelo id
+    // busca por id
     if (!pedido && pagamentoId) {
       pedido = await prisma.pedido.findUnique({ where: { id: pagamentoId } });
     }
 
-    // buscar pelo txid na tabela Charge
+    // busca por txid (via tabela charge)
     if (!pedido && txid) {
       const charge = await prisma.charge.findFirst({ where: { providerId: txid } });
       if (charge) {
@@ -50,24 +43,22 @@ export async function POST(req) {
       return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });
     }
 
-    // atualizar status se necessário
+    // atualiza status para PAID, se necessário
     if (pedido.status !== "PAID") {
-      await prisma.pedido.update({
+      pedido = await prisma.pedido.update({
         where: { id: pedido.id },
         data: { status: "PAID" },
       });
-      pedido = { ...pedido, status: "PAID" };
     }
 
-    const ipFinal  = ip  || pedido.ip  || null;
+    const ipFinal = ip || pedido.ip || null;
     const macFinal = mac || pedido.deviceMac || null;
 
-    // liberar acesso via Mikrotik
+    // 🔥 liberar via Mikrotik (usa SSH por padrão)
     const lib = await liberarCliente({
       ip: ipFinal || undefined,
       mac: macFinal || undefined,
-      comentario: `pedido:${pedido.id}`,
-      timeout: process.env.MKT_TIMEOUT || "4h",
+      comment: `pedido:${pedido.id}`, // <- campo correto
     });
 
     return NextResponse.json({
@@ -79,7 +70,7 @@ export async function POST(req) {
       redirect: linkOrig || null,
     });
   } catch (e) {
-    console.error("POST /api/liberar-acesso", e);
+    console.error("POST /api/liberar-acesso error:", e);
     return NextResponse.json({ error: "Falha ao liberar acesso" }, { status: 500 });
   }
 }

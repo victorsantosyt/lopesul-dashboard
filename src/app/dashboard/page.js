@@ -11,31 +11,19 @@ const fmtData = (iso) =>
   new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 // ===== Configs =====
-const TTL_MS = 30_000;                   // cache por guia/aba (stale-while-revalidate)
+const TTL_MS = 30_000;
 const DASH_TIMEOUT = 4500;
 const PAYS_TIMEOUT = 4500;
 const SESS_TIMEOUT = 4500;
-const MTK_TIMEOUT = 2500;
+const MTK_TIMEOUT = 3000;
 const MTK_POLL_MS = 15_000;
 
 // ===== Helpers =====
 async function fetchJSON(url, { timeoutMs = 4000, signal, cache = "no-store" } = {}) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  const composite = signal
-    ? new AbortController()
-    : null;
-
-  // encadeia abort externo + interno
-  if (composite && signal) {
-    signal.addEventListener("abort", () => composite.abort(), { once: true });
-  }
-
   try {
-    const res = await fetch(url, {
-      signal: composite ? composite.signal : ctl.signal,
-      cache,
-    });
+    const res = await fetch(url, { signal: signal || ctl.signal, cache });
     const data = await res.json().catch(() => null);
     return { ok: res.ok, data };
   } finally {
@@ -66,9 +54,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
 
-  const [dash, setDash] = useState(null);     // /api/dashboard
-  const [ultimos, setUltimos] = useState([]); // /api/pagamentos
-  const [acessos, setAcessos] = useState([]); // /api/sessoes
+  const [dash, setDash] = useState(null);
+  const [ultimos, setUltimos] = useState([]);
+  const [acessos, setAcessos] = useState([]);
 
   const [status, setStatus] = useState({
     starlink: null,
@@ -81,67 +69,45 @@ export default function Dashboard() {
 
   // ====== STATUS (Mikrotik/Starlink) ======
   async function carregarStatus(abortSignal) {
-    // 1) tenta a rota consolidada (/api/mikrotik/ping)
     try {
-      const r = await fetchJSON("/api/mikrotik/ping", {
+      const r = await fetchJSON("/api/mikrotik/status", {
         timeoutMs: MTK_TIMEOUT,
         signal: abortSignal,
         cache: "no-store",
       });
-      if (r?.data) {
+
+      if (r?.ok && r?.data) {
         const j = r.data;
-        const mik = j?.ok && j?.connected ? "online" : "offline";
-        const star = j?.internet?.ok ? "online" : "offline";
-        const rtt = j?.internet?.rtt_ms ?? null;
-        const ident = j?.identity ?? null;
+        const mik = j.ok ? "online" : "offline";
+        const star = j.flags?.hasLink && j.flags?.pingSuccess ? "online" : "offline";
+        const rtt = j.flags?.rttMs ?? j.rttMs ?? null;
+        const ident = j.identity ?? j.routerId ?? null;
+
         setStatus({ mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
         setCache("dash:status:v1", { mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
         return;
       }
     } catch {
-      // segue pro fallback
+      console.warn("Falha no /api/mikrotik/status, tentando fallback…");
     }
 
-    // 2) fallback: /api/dispositivos/status (ou /api/dispositivos)
+    // fallback
     try {
       const rDisp = await fetchJSON("/api/dispositivos/status", {
         timeoutMs: MTK_TIMEOUT,
         signal: abortSignal,
         cache: "no-store",
       });
-
-      let lista = [];
       if (rDisp?.ok && Array.isArray(rDisp.data)) {
-        lista = rDisp.data;
-      } else {
-        const rAlt = await fetchJSON("/api/dispositivos", {
-          timeoutMs: MTK_TIMEOUT,
-          signal: abortSignal,
-          cache: "no-store",
-        });
-        if (rAlt?.ok) lista = Array.isArray(rAlt.data) ? rAlt.data : (rAlt.data?.items ?? []);
-      }
-
-      if (lista) {
-        const anyMikroOnline = lista.some((d) => d?.status === "online" || d?.online === true);
-        const anyStarOnline = lista.some(
-          (d) =>
-            (d?.tipo?.toLowerCase?.() === "starlink" ||
-              d?.nome?.toLowerCase?.().includes?.("starlink")) &&
-            (d?.status === "online" || d?.online === true)
-        );
-        const next = {
-          mikrotik: anyMikroOnline ? "online" : "offline",
-          starlink: anyStarOnline ? "online" : "offline",
+        const anyMikro = rDisp.data.some((d) => d?.tipo === "mikrotik" && d.status === "online");
+        const anyStar = rDisp.data.some((d) => d?.tipo === "starlink" && d.status === "online");
+        setStatus({
+          mikrotik: anyMikro ? "online" : "offline",
+          starlink: anyStar ? "online" : "offline",
           rttMs: null,
-          identity: null,
-        };
-        setStatus(next);
-        setCache("dash:status:v1", next);
+        });
       }
-    } catch {
-      // silencia
-    }
+    } catch {}
   }
 
   useEffect(() => {
@@ -151,29 +117,24 @@ export default function Dashboard() {
     const ac = new AbortController();
     setErro(null);
 
-    // 0) tenta exibir cache imediatamente (se existir)
     const cDash = getCache("dash:dashboard:v1");
     const cPays = getCache("dash:ultimos:v1");
     const cSess = getCache("dash:sessoes:v1");
-    const cSta  = getCache("dash:status:v1");
+    const cSta = getCache("dash:status:v1");
 
     if (cDash?.v) setDash(cDash.v);
     if (cPays?.v) setUltimos(cPays.v);
     if (cSess?.v) setAcessos(cSess.v);
-    if (cSta?.v)  setStatus((s) => ({ ...s, ...cSta.v }));
+    if (cSta?.v) setStatus((s) => ({ ...s, ...cSta.v }));
 
-    // Se temos qualquer dado em cache, já liberamos o “loading”
-    if (cDash?.v || cPays?.v || cSess?.v) {
-      setLoading(false);
-    }
+    if (cDash?.v || cPays?.v || cSess?.v) setLoading(false);
 
-    // 1) busca em paralelo (com timeouts)
     (async () => {
       try {
         const [rDash, rPays, rSess] = await Promise.allSettled([
-          fetchJSON(`/api/dashboard?days=30`, { timeoutMs: DASH_TIMEOUT, signal: ac.signal, cache: "no-store" }),
-          fetchJSON(`/api/pagamentos?limit=5&status=pago`, { timeoutMs: PAYS_TIMEOUT, signal: ac.signal, cache: "no-store" }),
-          fetchJSON(`/api/sessoes?ativas=true&limit=10`, { timeoutMs: SESS_TIMEOUT, signal: ac.signal, cache: "no-store" }),
+          fetchJSON(`/api/dashboard?days=30`, { timeoutMs: DASH_TIMEOUT, signal: ac.signal }),
+          fetchJSON(`/api/pagamentos?limit=5&status=pago`, { timeoutMs: PAYS_TIMEOUT, signal: ac.signal }),
+          fetchJSON(`/api/sessoes?ativas=true&limit=10`, { timeoutMs: SESS_TIMEOUT, signal: ac.signal }),
         ]);
 
         if (rDash.status === "fulfilled" && rDash.value?.ok && rDash.value.data) {
@@ -181,12 +142,16 @@ export default function Dashboard() {
           setCache("dash:dashboard:v1", rDash.value.data);
         }
         if (rPays.status === "fulfilled" && rPays.value?.ok) {
-          const lista = Array.isArray(rPays.value.data) ? rPays.value.data : (rPays.value.data?.items ?? []);
+          const lista = Array.isArray(rPays.value.data)
+            ? rPays.value.data
+            : rPays.value.data?.items ?? [];
           setUltimos(lista);
           setCache("dash:ultimos:v1", lista);
         }
         if (rSess.status === "fulfilled" && rSess.value?.ok) {
-          const lista = Array.isArray(rSess.value.data) ? rSess.value.data : (rSess.value.data?.items ?? []);
+          const lista = Array.isArray(rSess.value.data)
+            ? rSess.value.data
+            : rSess.value.data?.items ?? [];
           setAcessos(lista);
           setCache("dash:sessoes:v1", lista);
         }
@@ -198,7 +163,6 @@ export default function Dashboard() {
       }
     })();
 
-    // 2) carrega status uma vez, depois faz polling
     carregarStatus(ac.signal);
     const t = setInterval(() => carregarStatus(ac.signal), MTK_POLL_MS);
 
@@ -208,7 +172,6 @@ export default function Dashboard() {
     };
   }, []);
 
-  // KPIs derivados da /api/dashboard
   const kpis = useMemo(() => {
     const k = dash?.kpis;
     const inv = dash?.inventario;
@@ -272,13 +235,12 @@ export default function Dashboard() {
                   <tr>
                     <th className="text-gray-800 dark:text-white">Cliente / IP</th>
                     <th className="text-gray-800 dark:text-white">Expira em</th>
-                    <th className="text-center text-gray-800 dark:text-white">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={3} className="py-4 text-gray-400 dark:text-gray-500">
+                      <td colSpan={2} className="py-4 text-gray-400 dark:text-gray-500">
                         Carregando…
                       </td>
                     </tr>
@@ -289,16 +251,11 @@ export default function Dashboard() {
                           {s.cliente ?? s.ipCliente ?? s.macCliente ?? "—"}
                         </td>
                         <td>{s.expiraEm ? fmtData(s.expiraEm) : "—"}</td>
-                        <td className="text-center">
-                          <button className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md transition">
-                            Bloquear
-                          </button>
-                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={3} className="text-center py-4 text-gray-400 dark:text-gray-500">
+                      <td colSpan={2} className="text-center py-4 text-gray-400 dark:text-gray-500">
                         Sem acessos no momento.
                       </td>
                     </tr>
