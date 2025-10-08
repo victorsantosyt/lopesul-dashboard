@@ -71,7 +71,7 @@ export async function POST(req) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        valor: valorCent,          // CENTAVOS
+        valor: body?.valor,          // VALOR EM REAIS (não centavos)
         descricao,
         customer,
         expires_in: expiresIn,
