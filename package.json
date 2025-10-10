@@ -29,6 +29,7 @@
     "mikronode": "^2.0.5",
     "mikronode-ng2": "^1.0.12",
     "next": "^15.5.4",
+    "node-fetch": "^3.3.2",
     "node-routeros": "^1.6.8",
     "node-ssh": "^13.2.1",
     "ping": "^0.4.4",
