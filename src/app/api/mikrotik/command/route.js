@@ -3,7 +3,7 @@
 
 export const dynamic = 'force-dynamic';
 
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 12000;
 
 // CORS p/ browsers/captive
 export async function OPTIONS() {
