@@ -2,10 +2,32 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import mikrotik from "@/lib/mikrotik";
+import prisma from '@/lib/prisma';
+import mikrotik from '@/lib/mikrotik';
 const { liberarCliente } = mikrotik;
+
+/* Helper: JSON com CORS */
+function json(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
+/* Preflight CORS (para o pagamento.html chamar direto) */
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
 
 export async function POST(req) {
   try {
@@ -13,25 +35,21 @@ export async function POST(req) {
     const { externalId, pagamentoId, txid, ip, mac, linkOrig } = body || {};
 
     if (!externalId && !pagamentoId && !txid) {
-      return NextResponse.json(
-        { error: "Informe externalId (code), pagamentoId ou txid." },
-        { status: 400 }
-      );
+      return json({ ok: false, error: 'Informe externalId (code), pagamentoId ou txid.' }, 400);
     }
 
+    // ============ Localiza o pedido ============
     let pedido = null;
 
-    // busca por code
+    // 1) por externalId (code)
     if (externalId) {
       pedido = await prisma.pedido.findUnique({ where: { code: externalId } });
     }
-
-    // busca por id
+    // 2) por pagamentoId
     if (!pedido && pagamentoId) {
       pedido = await prisma.pedido.findUnique({ where: { id: pagamentoId } });
     }
-
-    // busca por txid (via tabela charge)
+    // 3) via txid (tabela charge -> pega pedidoId)
     if (!pedido && txid) {
       const charge = await prisma.charge.findFirst({ where: { providerId: txid } });
       if (charge) {
@@ -40,37 +58,55 @@ export async function POST(req) {
     }
 
     if (!pedido) {
-      return NextResponse.json({ error: "Pagamento não encontrado" }, { status: 404 });
+      return json({ ok: false, error: 'Pagamento/Pedido não encontrado.' }, 404);
     }
 
-    // atualiza status para PAID, se necessário
-    if (pedido.status !== "PAID") {
-      pedido = await prisma.pedido.update({
-        where: { id: pedido.id },
-        data: { status: "PAID" },
-      });
+    // ============ Marca como pago (idempotente) ============
+    if (pedido.status !== 'PAID') {
+      try {
+        pedido = await prisma.pedido.update({
+          where: { id: pedido.id },
+          data: { status: 'PAID' },
+        });
+      } catch {
+        // se o schema não permitir/usar outro enum, segue sem travar
+      }
     }
 
-    const ipFinal = ip || pedido.ip || null;
+    // ============ Liberação no MikroTik ============
+    const ipFinal  = ip  || pedido.ip       || null;
     const macFinal = mac || pedido.deviceMac || null;
 
-    // 🔥 liberar via Mikrotik (usa SSH por padrão)
-    const lib = await liberarCliente({
-      ip: ipFinal || undefined,
-      mac: macFinal || undefined,
-      comment: `pedido:${pedido.id}`, // <- campo correto
-    });
+    let mk = { ok: true, note: 'sem ip/mac para liberar (somente status atualizado)' };
+    if (ipFinal || macFinal) {
+      try {
+        mk = await liberarCliente({
+          ip: ipFinal || undefined,
+          mac: macFinal || undefined,
+          comment: `pedido:${pedido.id}`,
+        });
+      } catch (e) {
+        // Se der erro na liberação, devolve 502 mas com contexto do pedido atualizado
+        return json({
+          ok: false,
+          error: e?.message || 'falha liberarCliente',
+          pedidoId: pedido.id,
+          code: pedido.code,
+          status: pedido.status,
+        }, 502);
+      }
+    }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       pedidoId: pedido.id,
       code: pedido.code,
       status: pedido.status,
-      mikrotik: lib,
+      mikrotik: mk,
       redirect: linkOrig || null,
     });
   } catch (e) {
-    console.error("POST /api/liberar-acesso error:", e);
-    return NextResponse.json({ error: "Falha ao liberar acesso" }, { status: 500 });
+    console.error('POST /api/liberar-acesso error:', e);
+    return json({ ok: false, error: 'Falha ao liberar acesso' }, 500);
   }
 }
