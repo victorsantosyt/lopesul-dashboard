@@ -20,9 +20,9 @@ export default function MikrotikStatusPage() {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [loadingPPP, setLoadingPPP] = useState(false);
   const [identity, setIdentity] = useState(null);
-  const [listName, setListName] = useState('paid_clients');
+  const [listName, setListName] = useState('paid_clients'); // mantido (layout), mas não é usado pela nova rota
   const [limit, setLimit] = useState(100);
-  const [statusItems, setStatusItems] = useState([]);
+  const [statusItems, setStatusItems] = useState([]); // continuará existindo (pode ficar vazio)
   const [pppRows, setPppRows] = useState([]);
   const [msg, setMsg] = useState(null);
   const [actingIp, setActingIp] = useState(null);
@@ -30,20 +30,25 @@ export default function MikrotikStatusPage() {
 
   const busy = loadingStatus || loadingPPP;
 
-  // === Helpers ===
   function toast(type, text) {
     setMsg({ type, text });
     setTimeout(() => setMsg(null), 3000);
   }
 
+  // === NOVA ROTA: /api/dispositivos/status (resumo técnico)
   async function fetchStatus() {
     setLoadingStatus(true);
     try {
-      const res = await fetch(`/api/mikrotik/status?list=${encodeURIComponent(listName)}&limit=${limit}`);
+      const res = await fetch(`/api/dispositivos/status`, { cache: 'no-store' });
       const j = await res.json();
-      if (j?.ok) {
-        setIdentity(j.identity || null);
-        setStatusItems(Array.isArray(j.items) ? j.items : []);
+      if (res.ok) {
+        // essa rota não retorna address-list; preservo o layout:
+        setIdentity(
+          j?.mikrotik?.lastHost
+            ? `Mikrotik (${j.mikrotik.lastHost})`
+            : (j?.mikrotik?.online ? 'Mikrotik' : null)
+        );
+        setStatusItems([]); // sem address-list nessa API
       } else {
         setStatusItems([]);
         toast('err', j?.error || 'Falha ao carregar status');
@@ -55,66 +60,58 @@ export default function MikrotikStatusPage() {
     }
   }
 
+  // === NOVA ROTA: /api/hotspot/active (lista sessões)
   async function fetchPPP() {
     setLoadingPPP(true);
     try {
-      const res = await fetch(`/api/mikrotik/ppp-active?limit=${limit}`);
+      const res = await fetch(`/api/hotspot/active?limit=${limit}`, { cache: 'no-store' });
       const j = await res.json();
-      if (j?.ok) {
-        setPppRows(Array.isArray(j.rows) ? j.rows : []);
-      } else {
-        setPppRows([]);
-        toast('err', j?.error || 'Falha ao listar PPP Active');
-      }
+      // aceita array puro ou {items:[...]}
+      const rows = Array.isArray(j) ? j : (Array.isArray(j?.items) ? j.items : []);
+      setPppRows(rows);
     } catch {
-      toast('err', 'Erro de rede ao consultar PPP Active');
+      toast('err', 'Erro de rede ao consultar PPP/Hotspot ativos');
+      setPppRows([]);
     } finally {
       setLoadingPPP(false);
     }
   }
 
-  async function handleLiberar(ip, busId) {
-    if (!isValidIp(ip || '')) return toast('err', 'IP inválido');
-    setActingIp(ip); setActingAction('liberar');
-    try {
-      const res = await fetch('/api/mikrotik/liberar', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ip, busId, list: listName }),
-      });
-      const j = await res.json();
-      if (res.ok && j?.ok) {
-        toast('ok', `IP ${ip} liberado`);
-        await sleep(300);
-        fetchStatus();
-      } else toast('err', j?.error || `Falha ao liberar ${ip}`);
-    } catch {
-      toast('err', `Erro de rede ao liberar ${ip}`);
-    } finally {
-      setActingIp(null); setActingAction(null);
-    }
-  }
-
+  // === AJUSTE: revogar usa /api/hotspot/kick/by-ip
   async function handleRevogar(ip) {
     if (!isValidIp(ip || '')) return toast('err', 'IP inválido');
     setActingIp(ip); setActingAction('revogar');
     try {
-      const res = await fetch('/api/mikrotik/revogar', {
+      const res = await fetch('/api/hotspot/kick/by-ip', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ip, list: listName }),
+        body: JSON.stringify({ ip }),
       });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (res.ok && j?.ok) {
+        // (opcional) refletir no banco:
+        fetch('/api/sessoes/revogar', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ip }),
+        }).catch(()=>{});
         toast('ok', `IP ${ip} revogado`);
         await sleep(300);
-        fetchStatus();
-      } else toast('err', j?.error || `Falha ao revogar ${ip}`);
+        fetchPPP();
+      } else {
+        toast('err', j?.error || `Falha ao revogar ${ip}`);
+      }
     } catch {
       toast('err', `Erro de rede ao revogar ${ip}`);
     } finally {
       setActingIp(null); setActingAction(null);
     }
+  }
+
+  // === OBS: “liberar” ficava na API antiga. Se quiser manter o botão, a rota de negócio é /api/liberar-acesso (exige referência de pagamento).
+  async function handleLiberar(ip, busId) {
+    // Mantido para não quebrar layout, mas agora só dá feedback rápido:
+    toast('err', 'Liberação manual mudou para o fluxo de pagamento (/api/liberar-acesso).');
   }
 
   useEffect(() => {
@@ -127,7 +124,7 @@ export default function MikrotikStatusPage() {
 
   return (
     <div className="p-6 md:p-8 bg-[#F0F6FA] dark:bg-[#1a2233] min-h-screen transition-colors space-y-6">
-      {/* Header */}
+      {/* Header original mantido */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Status do Mikrotik</h1>
@@ -183,7 +180,7 @@ export default function MikrotikStatusPage() {
         </div>
       )}
 
-      {/* Address List */}
+      {/* Address-list (continua na UI; sem dados nesta API) */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white">
@@ -206,7 +203,9 @@ export default function MikrotikStatusPage() {
             <tbody>
               {statusItems.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-6 text-gray-500">Nenhum item nessa lista.</td>
+                  <td colSpan={5} className="text-center py-6 text-gray-500">
+                    (Sem dados — /api/dispositivos/status não retorna address-list)
+                  </td>
                 </tr>
               ) : (
                 statusItems.map((it, i) => {
@@ -219,7 +218,7 @@ export default function MikrotikStatusPage() {
                       <td className="px-3 py-2">{it.disabled ? 'não' : 'sim'}</td>
                       <td className="px-3 py-2 text-right">
                         <button
-                          onClick={() => handleRevogar(it.address)}
+                          onClick={() => it.address && handleRevogar(it.address)}
                           disabled={!it.address || revoking}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 focus:ring-2 focus:ring-red-400"
                         >
@@ -235,10 +234,11 @@ export default function MikrotikStatusPage() {
           </table>
         </div>
 
+        {/* Mantido no layout, mas agora só mostra aviso se clicar */}
         <LiberarForm onSubmit={handleLiberar} />
       </section>
 
-      {/* PPP Active */}
+      {/* PPP Active (agora vindo de /api/hotspot/active) */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold flex items-center gap-2 text-gray-800 dark:text-white">
@@ -266,24 +266,31 @@ export default function MikrotikStatusPage() {
                 </tr>
               ) : (
                 pppRows.map((r, i) => {
-                  const liberating = actingIp === r.address && actingAction === 'liberar';
+                  const ip = r?.address || r?.ip || r?.ipAddress || '';
+                  const mac = r?.callerId || r?.mac || r?.caller || '';
+                  const name = r?.name || r?.user || r?.username || '—';
+                  const svc = r?.service || r?.profile || '—';
+                  const up = r?.uptime || r?.uptimeStr || '—';
+                  const liberating = actingIp === ip && actingAction === 'liberar';
+                  const revoking   = actingIp === ip && actingAction === 'revogar';
+
                   return (
-                    <tr key={`${r.name}-${i}`} className="border-t border-gray-100 dark:border-gray-800">
-                      <td className="px-3 py-2">{r.name || '—'}</td>
-                      <td className="px-3 py-2 font-mono">{r.address || '—'}</td>
-                      <td className="px-3 py-2">{r.callerId || '—'}</td>
-                      <td className="px-3 py-2">{r.service || '—'}</td>
+                    <tr key={`${name}-${ip}-${i}`} className="border-t border-gray-100 dark:border-gray-800">
+                      <td className="px-3 py-2">{name}</td>
+                      <td className="px-3 py-2 font-mono">{ip || '—'}</td>
+                      <td className="px-3 py-2">{mac || '—'}</td>
+                      <td className="px-3 py-2">{svc}</td>
                       <td className="px-3 py-2 flex items-center gap-1">
-                        <Clock className="h-4 w-4" /> {r.uptime || '—'}
+                        <Clock className="h-4 w-4" /> {up}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button
-                          onClick={() => r.address && handleLiberar(r.address)}
-                          disabled={!r.address || liberating}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 focus:ring-2 focus:ring-emerald-400"
+                          onClick={() => ip && handleRevogar(ip)}
+                          disabled={!ip || revoking}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 focus:ring-2 focus:ring-red-400"
                         >
-                          {liberating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                          <span className="hidden md:inline">Liberar</span>
+                          {revoking ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldX className="h-4 w-4" />}
+                          <span className="hidden md:inline">Revogar</span>
                         </button>
                       </td>
                     </tr>

@@ -2,77 +2,125 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req) {
   try {
+    // ----- período -----
     const { searchParams } = new URL(req.url);
     const daysRaw = Number(searchParams.get("days") || "30");
     const days = Math.min(Math.max(daysRaw, 1), 365); // 1..365
-
     const to = new Date();
     const from = new Date();
     from.setDate(to.getDate() - days);
-
     const between = { gte: from, lte: to };
+
     const safeNum = (n) => (Number.isFinite(n) ? n : 0);
 
-    // ---------- Pagamentos (1 query com groupBy) ----------
-    // retorna linhas por status com _count e _sum.valorCent
-    if (!prisma.pagamento) {
-  console.error("Tabela pagamento não encontrada.");
-  return NextResponse.json({ error: "Tabela não disponível." });
-}
-    const pgRows =
-      (await prisma.pagamento
-        .groupBy({
-          by: ["status"],
-          where: { criadoEm: between },
-          _count: { _all: true },
-          _sum: { valorCent: true },
-        })
-        .catch(() => [])) || [];
+    // helpers “silenciosos”
+    const hasModel = (name) => {
+      // prisma é um proxy; checagem segura:
+      const m = prisma?.[name];
+      return !!m && typeof m === "object";
+    };
+    const q = async (fn, fallback) => {
+      try { return await fn(); } catch { return fallback; }
+    };
 
-    let pagos = 0,
-      pendentes = 0,
-      expirados = 0,
-      receitaCent = 0;
+    // =====================================================================
+    // 1) PAGAMENTOS / RECEITA
+    //    Preferimos modelo novo: PEDIDO (status + valorCent + createdAt)
+    //    Se não houver, tentamos legado: PAGAMENTO (status + valorCent + criadoEm)
+    // =====================================================================
+    let pagos = 0, pendentes = 0, expirados = 0, receitaCent = 0;
 
-    for (const r of pgRows) {
-      const st = r.status;
-      const cnt = safeNum(r._count?._all || 0);
-      const sum = safeNum(r._sum?.valorCent || 0);
-      if (st === "pago") {
-        pagos += cnt;
-        receitaCent += sum;
-      } else if (st === "pendente") {
-        pendentes += cnt;
-      } else if (st === "expirado") {
-        expirados += cnt;
+    if (hasModel("pedido") && typeof prisma.pedido.groupBy === "function") {
+      const rows = await q(() => prisma.pedido.groupBy({
+        by: ["status"],
+        where: { createdAt: between },
+        _count: { _all: true },
+        // só soma se existir o campo no schema; se não existir, Prisma ignora? então protegemos no consumo
+        _sum: { valorCent: true },
+      }), []);
+
+      for (const r of rows) {
+        const st = r.status;
+        const cnt = safeNum(r?._count?._all || 0);
+        const sum = safeNum(r?._sum?.valorCent || 0);
+        if (st === "PAID" || st === "pago") {
+          pagos += cnt; receitaCent += sum;
+        } else if (st === "PENDING" || st === "pendente") {
+          pendentes += cnt;
+        } else if (st === "EXPIRED" || st === "expirado") {
+          expirados += cnt;
+        }
+      }
+    } else if (hasModel("pagamento") && typeof prisma.pagamento.groupBy === "function") {
+      const rows = await q(() => prisma.pagamento.groupBy({
+        by: ["status"],
+        where: { criadoEm: between },
+        _count: { _all: true },
+        _sum: { valorCent: true },
+      }), []);
+
+      for (const r of rows) {
+        const st = r.status;
+        const cnt = safeNum(r?._count?._all || 0);
+        const sum = safeNum(r?._sum?.valorCent || 0);
+        if (st === "pago" || st === "PAID") {
+          pagos += cnt; receitaCent += sum;
+        } else if (st === "pendente" || st === "PENDING") {
+          pendentes += cnt;
+        } else if (st === "expirado" || st === "EXPIRED") {
+          expirados += cnt;
+        }
       }
     }
+    // caso nenhum modelo exista: ficam zeros
 
-    // ---------- Vendas (1 query) ----------
+    // =====================================================================
+    // 2) VENDAS (agregados)
+    // =====================================================================
     let totalVendas = 0;
     let qtdVendas = 0;
-    try {
-      const vendasAgg = await prisma.venda.aggregate({
-        _sum: { valorCent: true }, // campo em centavos
+    if (hasModel("venda")) {
+      const ag = await q(() => prisma.venda.aggregate({
+        _sum: { valorCent: true },
         _count: { id: true },
         where: { data: between },
-      });
-      totalVendas = safeNum(vendasAgg._sum?.valorCent || 0) / 100; // centavos → R$
-      qtdVendas = safeNum(vendasAgg._count?.id || 0);
-    } catch {
-      // se não existir a tabela, segue com zeros
+      }), { _sum: { valorCent: 0 }, _count: { id: 0 } });
+
+      totalVendas = safeNum(ag._sum?.valorCent || 0) / 100;
+      qtdVendas   = safeNum(ag._count?.id || 0);
     }
 
-    // ---------- Inventário / Operação (1 roundtrip usando $transaction) ----------
-    const [frotas, dispositivos, operadores, sessoesAtivas] = await prisma.$transaction([
-      prisma.frota.count(),
-      prisma.dispositivo.count(),
-      prisma.operador.count(),
-      prisma.sessaoAtiva.count({ where: { ativo: true } }),
-    ]);
+    // =====================================================================
+    // 3) INVENTÁRIO / OPERAÇÃO (counts)
+    // =====================================================================
+    const counts = await q(async () => {
+      const tasks = [];
 
+      // só empurra o que existir; mantém ordem para ler depois
+      if (hasModel("frota"))        tasks.push(prisma.frota.count());
+      if (hasModel("dispositivo"))  tasks.push(prisma.dispositivo.count());
+      if (hasModel("operador"))     tasks.push(prisma.operador.count());
+      if (hasModel("sessaoAtiva"))  tasks.push(prisma.sessaoAtiva.count({ where: { ativo: true } }));
+
+      const res = await prisma.$transaction(tasks);
+
+      // map por posição, mas caindo pra 0 se ausente
+      let i = 0;
+      const frotas        = tasks.length > i ? res[i++] : 0;
+      const dispositivos  = tasks.length > i ? res[i++] : 0;
+      const operadores    = tasks.length > i ? res[i++] : 0;
+      const sessoesAtivas = tasks.length > i ? res[i++] : 0;
+
+      return { frotas, dispositivos, operadores, sessoesAtivas };
+    }, { frotas: 0, dispositivos: 0, operadores: 0, sessoesAtivas: 0 });
+
+    // =====================================================================
+    // 4) RESPOSTA
+    // =====================================================================
     const payload = {
       periodo: { from, to, days },
       kpis: {
@@ -81,8 +129,8 @@ export async function GET(req) {
         receita: receitaCent / 100, // R$
         pagamentos: { pagos, pendentes, expirados },
       },
-      inventario: { frotas, dispositivos },
-      operacao: { operadores, sessoesAtivas },
+      inventario: { frotas: counts.frotas, dispositivos: counts.dispositivos },
+      operacao: { operadores: counts.operadores, sessoesAtivas: counts.sessoesAtivas },
     };
 
     return NextResponse.json(payload, {

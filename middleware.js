@@ -1,38 +1,46 @@
 // middleware.js
 import { NextResponse } from 'next/server';
 
+// === arquivos públicos (sem auth)
 const PUBLIC_FILES = new Set([
-  '/pagamento.html',  // página do captive (frontend do QR)
+  '/pagamento.html', // página do captive (frontend do QR)
   '/favicon.ico',
 ]);
 
+// === prefixos públicos (assets, next, login)
 const PUBLIC_PREFIXES = [
-  '/captive',  // CSS/JS do captive
-  '/assets',   // imagens/fontes
-  '/_next',    // arquivos internos do Next
-  '/login',    // tela de login
+  '/captive',   // CSS/JS do captive
+  '/assets',    // imagens/fontes
+  '/_next',     // internos do Next
+  '/login',     // tela de login
 ];
 
+// === APIs públicas (usadas por captive/pagamentos/health)
 const PUBLIC_APIS = [
-  // === APIs do captive / pagamentos ===
+  '/api/db-health',
+  '/api/relay/ping',
+
+  // pagamentos/captive
   '/api/pagamentos/checkout',
-  '/api/payments',
-  // compat/legado
-  '/api/pagamentos',
-  '/api/pagamentos/pix',
-  '/api/pagamento',
+  '/api/pagamentos',         // compat/legado (lista/consulta)
+  '/api/pagamentos/pix',     // compat/legado (gera PIX)
+  '/api/pagamento',          // compat/legado
+  '/api/payments',           // nova base
+  '/api/payments/pix',
   '/api/verificar-pagamento',
   '/api/liberar-acesso',
 
-  // === auth / config públicas ===
-  '/api/pix-webhook',
+  // comando indireto via backend -> relay (deixa público p/ captive)
+  '/api/command/exec',
+
+  // auth/config leves
   '/api/auth/session-preference',
   '/api/configuracoes',
   '/api/login',
   '/api/logout',
 ];
 
-// ✅ Whitelist de destinos pós-login (adicione novas páginas aqui quando surgirem)
+// ✅ destinos pós-login permitidos
 const ALLOWED_NEXT_PATHS = new Set([
   '/',
   '/dashboard',
@@ -42,7 +50,6 @@ const ALLOWED_NEXT_PATHS = new Set([
   '/frotas',
 ]);
 
-// Cabeçalhos básicos de endurecimento (não quebram inline scripts)
 function withStdHeaders(res) {
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -50,27 +57,19 @@ function withStdHeaders(res) {
   return res;
 }
 
-// Normaliza/clampa o "next" do /login
 function normalizeNext(raw, origin) {
   try {
     if (!raw) return '/dashboard';
-
     const decoded = decodeURIComponent(raw.trim());
-    // Bloqueia esquemas perigosos
+
+    // bloqueia esquemas perigosos
     if (/^\s*(javascript|data):/i.test(decoded)) return '/dashboard';
 
     const u = new URL(decoded, origin);
-
-    // Só mesma origem
-    if (u.origin !== origin) return '/dashboard';
-
-    // Nunca redirecionar para /api
-    if (u.pathname.startsWith('/api')) return '/dashboard';
-
-    // Só permite paths whitelisted
+    if (u.origin !== origin) return '/dashboard';      // mesma origem
+    if (u.pathname.startsWith('/api')) return '/dashboard'; // nunca p/ /api
     if (!ALLOWED_NEXT_PATHS.has(u.pathname)) return '/dashboard';
 
-    // Retorna caminho + query + hash
     return (u.pathname + u.search + u.hash) || '/dashboard';
   } catch {
     return '/dashboard';
@@ -80,6 +79,11 @@ function normalizeNext(raw, origin) {
 export function middleware(req) {
   const { pathname, search } = req.nextUrl;
   const token = req.cookies.get('token')?.value;
+
+  // --- FAST-PASS: health sempre liberado (evita qualquer interferência)
+  if (pathname === '/api/_db-health') {
+    return withStdHeaders(NextResponse.next());
+  }
 
   // 1) Arquivos/caminhos públicos
   if (
@@ -91,8 +95,10 @@ export function middleware(req) {
 
   // 2) APIs
   if (pathname.startsWith('/api')) {
-    // Preflight CORS
-    if (req.method === 'OPTIONS') return withStdHeaders(NextResponse.next());
+    // CORS preflight
+    if (req.method === 'OPTIONS') {
+      return withStdHeaders(NextResponse.next());
+    }
 
     // APIs liberadas (prefix match seguro)
     if (PUBLIC_APIS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
@@ -119,16 +125,10 @@ export function middleware(req) {
     return withStdHeaders(NextResponse.next());
   }
 
-  // Garante que a página do captive passa sempre
-  if (pathname === '/pagamento.html') {
-    return withStdHeaders(NextResponse.next());
-  }
-
   // 4) Protege o restante do app
   if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
-    // "next" sempre interno (path atual + query)
     url.searchParams.set('next', pathname + (search || ''));
     return withStdHeaders(NextResponse.redirect(url));
   }
@@ -136,9 +136,9 @@ export function middleware(req) {
   return withStdHeaders(NextResponse.next());
 }
 
-// Evita rodar em estáticos óbvios
+// Evita rodar em estáticos (e libera /pagamento.html sem passar no middleware)
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|assets/|captive/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|assets/|captive/|pagamento.html).*)',
   ],
 };

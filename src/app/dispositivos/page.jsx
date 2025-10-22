@@ -1,13 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Wifi } from 'lucide-react';
+import { Wifi, RefreshCcw } from 'lucide-react';
 
 export default function DispositivosPage() {
   const [dispositivos, setDispositivos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
+
+  // status resumido (Mikrotik/Starlink) carregado sob demanda
+  const [statusResumo, setStatusResumo] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusErro, setStatusErro] = useState('');
 
   async function carregarDispositivos() {
     try {
@@ -26,6 +30,23 @@ export default function DispositivosPage() {
     }
   }
 
+  async function carregarStatus() {
+    try {
+      setStatusErro('');
+      setStatusLoading(true);
+      const res = await fetch('/api/dispositivos/status', { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      setStatusResumo(json);
+    } catch (e) {
+      console.error('Erro status dispositivos:', e);
+      setStatusResumo(null);
+      setStatusErro('Não foi possível obter o status técnico agora.');
+    } finally {
+      setStatusLoading(false);
+    }
+  }
+
   useEffect(() => {
     carregarDispositivos();
   }, []);
@@ -38,18 +59,64 @@ export default function DispositivosPage() {
           Painel Técnico — Dispositivos
         </h1>
 
-        <Link
-          href="/dispositivos/status"
+        <button
+          onClick={carregarStatus}
+          disabled={statusLoading}
           className="inline-flex items-center gap-2 rounded-lg px-3 py-2
-                     bg-blue-600 text-white hover:bg-blue-700
+                     bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60
                      focus:outline-none focus:ring-2 focus:ring-blue-400"
-          aria-label="Ver Status do Mikrotik"
-          title="Ver Status do Mikrotik"
+          aria-label="Obter Status"
+          title="Obter Status (Mikrotik/Starlink)"
         >
           <Wifi className="h-5 w-5" />
-          <span className="hidden sm:inline">Ver Status</span>
-        </Link>
+          <span className="hidden sm:inline">{statusLoading ? 'Carregando…' : 'Ver Status'}</span>
+        </button>
       </div>
+
+      {/* Bloco de status técnico (carregado sob demanda) */}
+      {statusLoading && (
+        <div className="mb-4 text-sm text-gray-600 dark:text-gray-300">Consultando status…</div>
+      )}
+      {statusErro && (
+        <div className="mb-4 text-sm text-red-600 dark:text-red-400">{statusErro}</div>
+      )}
+      {statusResumo && (
+        <div className="mb-6 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#232e47]">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-gray-800 dark:text-white">Status Técnico</h3>
+            <button
+              onClick={carregarStatus}
+              className="inline-flex items-center gap-2 text-sm px-2 py-1 rounded-lg bg-gray-100 dark:bg-[#2b3754] hover:bg-gray-200 dark:hover:bg-[#314066]"
+              title="Atualizar"
+            >
+              <RefreshCcw className="h-4 w-4" /> Atualizar
+            </button>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <div>
+              <div className="text-gray-500 dark:text-gray-300">Mikrotik</div>
+              <div className="text-gray-800 dark:text-gray-100">
+                {statusResumo?.mikrotik?.online ? 'online' : 'offline'}
+                {statusResumo?.mikrotik?.lastHost ? ` — host: ${statusResumo.mikrotik.lastHost}` : ''}
+                {statusResumo?.mikrotik?.port ? ` (porta ${statusResumo.mikrotik.port})` : ''}
+              </div>
+              {statusResumo?.mikrotik?.via && (
+                <div className="text-gray-500 dark:text-gray-400">via: {statusResumo.mikrotik.via}</div>
+              )}
+            </div>
+            <div>
+              <div className="text-gray-500 dark:text-gray-300">Starlink</div>
+              <div className="text-gray-800 dark:text-gray-100">
+                {statusResumo?.starlink?.online ? 'online' : 'offline'}
+                {statusResumo?.starlink?.lastHost ? ` — host: ${statusResumo.starlink.lastHost}` : ''}
+              </div>
+              {statusResumo?.starlink?.via && (
+                <div className="text-gray-500 dark:text-gray-400">via: {statusResumo.starlink.via}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <h2 className="text-xl font-semibold mt-2 mb-3 text-gray-800 dark:text-white">
         Dispositivos Cadastrados

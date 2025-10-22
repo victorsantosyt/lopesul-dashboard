@@ -3,12 +3,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import prisma from '@/lib/prisma';
-// importa default e desestrutura da sua lib
 import mikrotik from '@/lib/mikrotik';
 const { revogarCliente } = mikrotik;
 
-/* Helper: JSON com CORS liberado (útil pro captive chamar direto) */
-function json(payload, status = 200) {
+/* ===== helpers ===== */
+const hasModel = (name) => {
+  const m = prisma?.[name];
+  return !!m && typeof m === 'object';
+};
+
+const tryAwait = async (fn, fallback = null) => {
+  try { return await fn(); } catch { return fallback; }
+};
+
+function corsJson(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -30,88 +38,117 @@ export async function OPTIONS() {
   });
 }
 
+/* ===== main ===== */
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const {
-      externalId,   // referência do PSP
-      pagamentoId,  // id interno
-      txid,         // txid Pix (opcional)
-      ip,           // força IP (opcional)
-      mac,          // força MAC (opcional)
-      statusFinal,  // "expirado" | "cancelado" (opcional)
+      // identificadores (qualquer um deles)
+      externalId,   // ref do PSP (no legado pode estar em pagamento.externalId; no novo costuma ser pedido.code)
+      pagamentoId,  // id interno legado
+      txid,         // txid Pix (legado)
+      pedidoId,     // id do novo 'pedido' (opcional)
+      code,         // code do 'pedido' (opcional)
+
+      // overrides de rede
+      ip,
+      mac,
+
+      // status desejado (opcional): 'expirado' | 'cancelado'
+      statusFinal,
     } = body || {};
 
-    if (!externalId && !pagamentoId && !txid && !ip && !mac) {
-      return json({ ok: false, error: 'Informe externalId, pagamentoId, txid, ip ou mac.' }, 400);
+    if (!externalId && !pagamentoId && !txid && !pedidoId && !code && !ip && !mac) {
+      return corsJson({ ok: false, error: 'Informe externalId, pagamentoId, txid, pedidoId, code, ip ou mac.' }, 400);
     }
 
-    // 1) Localiza o pagamento (se veio algum identificador)
-    let pg = null;
-    if (externalId) {
-      pg = await prisma.pagamento.findUnique({ where: { externalId } });
-    }
-    if (!pg && pagamentoId) {
-      pg = await prisma.pagamento.findUnique({ where: { id: pagamentoId } });
-    }
-    if (!pg && txid) {
-      pg = await prisma.pagamento.findFirst({ where: { txid } });
+    /* 1) localizar registro em uma das tabelas (pagamento OU pedido) */
+    let pg = null; // pagamento (legado)
+    let pd = null; // pedido   (novo)
+
+    if (hasModel('pagamento')) {
+      if (externalId && !pg) pg = await tryAwait(() =>
+        prisma.pagamento.findUnique({ where: { externalId } })
+      );
+      if (pagamentoId && !pg) pg = await tryAwait(() =>
+        prisma.pagamento.findUnique({ where: { id: pagamentoId } })
+      );
+      if (txid && !pg) pg = await tryAwait(() =>
+        prisma.pagamento.findFirst({ where: { txid } })
+      );
     }
 
-    // 2) Decide IP/MAC (payload tem prioridade; senão, dados do pagamento)
-    const ipFinal  = ip  || pg?.clienteIp  || null;
-    const macFinal = mac || pg?.clienteMac || null;
+    if (!pg && hasModel('pedido')) {
+      // no novo fluxo o "externalId" costuma ser o 'code' do pedido
+      const pedidoCode = code || externalId || null;
+      if (pedidoId && !pd) pd = await tryAwait(() =>
+        prisma.pedido.findUnique({ where: { id: pedidoId } })
+      );
+      if (pedidoCode && !pd) pd = await tryAwait(() =>
+        prisma.pedido.findUnique({ where: { code: pedidoCode } })
+      );
+    }
+
+    /* 2) decidir IP/MAC (payload > registro encontrado) */
+    const ipFinal  = ip  || pg?.clienteIp  || pd?.ip        || pd?.clienteIp  || null;
+    const macFinal = mac || pg?.clienteMac || pd?.deviceMac || pd?.clienteMac || null;
 
     if (!ipFinal && !macFinal) {
-      return json({ ok: false, error: 'Sem IP/MAC (nem no payload, nem no registro).' }, 400);
+      return corsJson({ ok: false, error: 'Sem IP/MAC (nem no payload, nem no registro).' }, 400);
     }
 
-    // 3) Revoga na Mikrotik (idempotente: tratar “não existe” como sucesso)
+    /* 3) revogar na Mikrotik — idempotente */
     let mk;
     try {
       mk = await revogarCliente({
         ip:  ipFinal  || undefined,
         mac: macFinal || undefined,
       });
-    } catch (e) {
-      // sua lib costuma lançar erro quando já não existe a sessão
-      // considere isso OK para idempotência
+    } catch {
+      // se já não existia, tratamos como sucesso para idempotência
       mk = { ok: true, note: 'revogarCliente idempotente (já não existia).' };
     }
 
-    // 4) Atualiza status e sessões relacionadas (se achou pagamento)
-    if (pg) {
-      // padrão: 'expirado' (se não vier explicitamente 'cancelado')
+    /* 4) atualizar status e sessão(ões) relacionadas */
+    const now = new Date();
+
+    if (pg && hasModel('pagamento')) {
       const novoStatus = statusFinal === 'cancelado' ? 'cancelado' : 'expirado';
-
-      try {
-        await prisma.pagamento.update({
-          where: { id: pg.id },
-          data: { status: novoStatus },
-        });
-      } catch {
-        // se o schema não tem esses status, ignore silenciosamente
-      }
-
-      // Sessões ativas -> marcar como inativas
-      try {
-        await prisma.sessaoAtiva.updateMany({
-          where: { pagamentoId: pg.id, ativo: true },
-          data: { ativo: false, expiraEm: new Date() },
-        });
-      } catch {
-        // tabela opcional — ignore se não existir
-      }
+      await tryAwait(() => prisma.pagamento.update({
+        where: { id: pg.id },
+        data: { status: novoStatus },
+      }));
+      await tryAwait(() => prisma.sessaoAtiva.updateMany({
+        where: { pagamentoId: pg.id, ativo: true },
+        data: { ativo: false, expiraEm: now },
+      }));
     }
 
-    return json({
+    if (pd && hasModel('pedido')) {
+      // mapeia para o esquema novo (MAIÚSCULAS)
+      const novoStatus = (statusFinal === 'cancelado') ? 'CANCELED' : 'EXPIRED';
+      await tryAwait(() => prisma.pedido.update({
+        where: { id: pd.id },
+        data: { status: novoStatus },
+      }));
+      await tryAwait(() => prisma.sessaoAtiva.updateMany({
+        where: { pedidoId: pd.id, ativo: true },
+        data: { ativo: false, expiraEm: now },
+      }));
+    }
+
+    return corsJson({
       ok: true,
-      pagamentoId: pg?.id || null,
-      externalId: pg?.externalId || externalId || null,
       mikrotik: mk,
+      // ecos úteis para o chamador
+      pagamentoId: pg?.id || null,
+      pedidoId:    pd?.id || null,
+      externalId:  pg?.externalId || pd?.code || externalId || code || null,
+      ip:          ipFinal || null,
+      mac:         macFinal || null,
     });
   } catch (e) {
     console.error('POST /api/revogar-acesso error:', e);
-    return json({ ok: false, error: 'Falha ao revogar' }, 500);
+    return corsJson({ ok: false, error: 'Falha ao revogar' }, 500);
   }
 }

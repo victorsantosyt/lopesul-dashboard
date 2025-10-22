@@ -10,7 +10,7 @@
     "build": "next build",
     "postinstall": "prisma generate",
     "prestart": "prisma migrate deploy || prisma db push",
-    "start": "next start --port $PORT --hostname 0.0.0.0",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "start:local": "next start --port 3000 --hostname 0.0.0.0",
     "studio": "prisma studio --port 5555 --hostname 0.0.0.0",
     "db:deploy": "prisma migrate deploy",
