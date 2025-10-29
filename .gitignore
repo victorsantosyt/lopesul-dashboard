@@ -70,3 +70,5 @@ patch.sql
 # =========================
 *.tsbuildinfo
 >>>>>>> chore/vps-prep
+.DS_Store
+**/.DS_Store

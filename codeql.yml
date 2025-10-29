@@ -1,4 +1,4 @@
-name: "CodeQL"
+name: CodeQL
 
 on:
   push:
@@ -7,33 +7,49 @@ on:
     branches: [ "main", "develop" ]
   schedule:
     - cron: '0 3 * * 0'
+  workflow_dispatch: {}
 
 jobs:
   analyze:
-    name: Analyze code with CodeQL
+    name: CodeQL (JS/TS)
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
       security-events: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'javascript', 'typescript' ]
+      pull-requests: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # histórico suficiente p/ diffs
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps / build (opcional)
+        run: |
+          corepack enable
+          npm ci
+          npm run build --if-present
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
+          # JS cobre JS + TS
+          languages: javascript
+          # regra mais parruda; troque por security-extended se quiser menos ruído
+          queries: security-and-quality
 
+      # Se seu build já foi feito acima, pode pular o autobuild.
+      # Se preferir deixar, mantenha:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-      - name: Perform CodeQL Analysis
+      - name: Analyze
         uses: github/codeql-action/analyze@v3
-
+        with:
+          category: "/language:javascript"
