@@ -1,0 +1,292 @@
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+}
+
+/* Fundo com imagem e degradê */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: rgb(33, 55, 96);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-attachment: fixed;
+  font-family: Arial, sans-serif;
+}
+
+/* Estrutura principal */
+main {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Cabeçalho */
+header {
+  display: block;
+  text-align: center; /* corrigido (antes tinha 'top') */
+  margin-bottom: 10px;
+}
+
+.logo-header {
+  width: 300px;
+  height: auto;
+  margin-bottom: 10px;
+}
+
+.site-title {
+  font-size: 36px;
+  font-weight: bold;
+  color: rgb(255, 255, 255);
+  margin-bottom: 10px;
+}
+
+/* Imagem do ônibus */
+.onibus img {
+  width: 100%;
+  max-width: 290px;
+  margin-top: 10px;
+}
+
+.subtitle {
+  font-size: 16px;
+  background-color: rgb(139, 194, 74);
+  color: rgb(255, 255, 255);
+  padding: 6px 12px;
+  margin-bottom: 50px;
+  border-radius: 28px;
+  box-shadow: 6px 6px 10px rgba(0, 0, 0, 0.5);
+  letter-spacing: 10px;
+}
+
+/* Container dos botões (linha antiga) */
+.planos {
+  display: flex;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 15px;
+  margin-top: 40px;
+}
+
+/* Estilo dos botões (linha antiga) */
+.planos button {
+  background-color: rgb(0, 152, 218);
+  color: rgb(255, 255, 255);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 15px;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: bold;
+  box-shadow: 5px 4px 5px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s, transform 0.2s;
+  width: 120px;
+}
+
+.planos button:hover {
+  background-color: rgb(60, 202, 241);
+  color: rgb(255, 255, 255);
+  transform: scale(1.09);
+}
+
+/* Rodapé */
+.footer {
+  position: fixed;
+  width: 290px;
+  font-size: 12px;
+  bottom: 3%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: rgba(159, 159, 159, 0.876);
+}
+
+.logo-footer {
+  width: 90px;
+  display: flex;
+  margin: 1px auto;
+}
+
+.frase-pacote {
+  font-size: 16px;
+  background-color: rgb(139, 194, 74);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 20px;
+  margin: 25px auto 10px auto;
+  font-weight: bold;
+  box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Ajustes de centralização e responsividade ===== */
+
+/* centraliza no eixo Y com folga no topo */
+.wrap{
+  min-height: 100svh;                /* usa a altura real da viewport (iOS friendly) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 6vh, 72px) 16px 32px; /* mais espaço no topo */
+}
+
+/* largura máxima e alinhamento */
+.card{ width:100%; max-width: 980px; text-align:center; }
+
+/* espaçamentos visuais principais */
+.logo{
+  width: min(380px, 80%);
+  margin: clamp(8px, 2vh, 24px) auto clamp(4px, 1vh, 12px);
+}
+h1{
+  margin: clamp(6px, 1.6vh, 16px) 0 clamp(10px, 2vh, 20px);
+}
+.bus{
+  width: min(520px, 85%);
+  margin: clamp(10px, 2vh, 22px) auto clamp(12px, 2vh, 24px);
+}
+.cta{
+  margin: clamp(8px, 2vh, 18px) 0 clamp(16px, 3vh, 26px);
+}
+.grid-planos{ gap: clamp(12px, 2.4vh, 22px); }
+.rodape{ margin-top: clamp(16px, 3vh, 32px); }
+
+/* checkout também com folga */
+.checkout{ margin-top: clamp(8px, 2vh, 16px); }
+
+/* se a tela for muito baixa, evita “corte” no topo */
+@media (max-height: 650px){
+  .wrap{ align-items: flex-start; padding-top: 24px; }
+}
+
+/* mobile: reduz imagens e deixa botões confortáveis */
+@media (max-width: 520px){
+  .wrap{ padding-top: clamp(24px, 8vh, 80px); }
+  .logo{ width: min(280px, 82%); }
+  .bus{  width: min(320px, 86%); }
+  .grid-planos{ justify-content: center; }
+  .btn-plano{ width: 100%; max-width: 280px; }
+}
+
+/* ===== Captive: ajustes finais ===== */
+
+/* centralização com respiro no topo */
+.wrap{
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(36px, 10vh, 140px) 16px 32px !important;
+}
+
+/* largura máxima do bloco principal */
+.card{ width:100%; max-width: 980px; text-align:center; }
+
+/* imagens e títulos */
+.logo{ width: min(380px, 80%); margin: clamp(8px, 2vh, 24px) auto clamp(6px, 1.2vh, 14px) !important; }
+h1{   margin: clamp(8px, 1.6vh, 18px) 0 clamp(12px, 2vh, 22px) !important; }
+.bus{  width: min(520px, 85%); margin: clamp(12px, 2vh, 24px) auto clamp(14px, 2.2vh, 28px) !important; }
+
+/* CTA + grade de planos (usa as classes do HTML atual) */
+.cta{ margin: clamp(10px, 2vh, 22px) 0 clamp(18px, 3vh, 28px) !important; }
+.grid-planos{ display:flex; gap: clamp(14px, 2.4vh, 24px); justify-content:center; flex-wrap:wrap; }
+.btn-plano{ background:#2b79c2; color:#fff; border:none; border-radius:14px; padding:14px 22px; width:160px; font-weight:800; box-shadow:0 20px 40px rgba(0,0,0,.08); }
+.btn-plano:hover{ background:#2066a6; }
+
+/* rodapé */
+.rodape{ margin-top: clamp(18px, 3vh, 32px) !important; }
+.rodape img{ height:42px; width:auto; }
+
+/* segunda etapa (checkout) */
+.checkout{ margin-top: clamp(8px, 2vh, 16px) !important; }
+
+/* telas baixas: evita colar no topo */
+@media (max-height: 650px){
+  .wrap{ align-items: flex-start !important; padding-top: 24px !important; }
+}
+
+/* mobile */
+@media (max-width: 520px){
+  .wrap{ padding-top: clamp(32px, 12vh, 160px) !important; }
+  .logo{ width: min(280px, 82%) !important; }
+  .bus { width: min(320px, 86%) !important; }
+  .grid-planos{ justify-content: center !important; }
+  .btn-plano{ width: 100% !important; max-width: 280px !important; }
+}
+
+/* ---- compatibilidade com HTML legado ---- */
+.planos{ display:flex; gap:15px; justify-content:center; flex-wrap:wrap; } /* garante não quebrar layouts antigos */
+@media (max-width:768px){
+  .planos{ flex-direction: column; }  /* corrige qualquer 'flex-direction: visible' antigo */
+}
+
+/* ===== MOBILE: 3 botões na mesma linha ===== */
+@media (max-width: 480px) {
+  .grid-planos,
+  .planos,
+  .container-botoes {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: center !important;
+    align-items: stretch !important;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .btn-plano,
+  .botao-pacote,
+  .planos button {
+    display: inline-flex !important;
+    flex: 0 0 calc((100% - 2px) / 3);  /* 3 colunas exatas */
+    margin-right: 1px;                 /* gap mínimo */
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 10px 6px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+  }
+
+  /* Hover / active effects */
+  .btn-plano:hover,
+  .botao-pacote:hover,
+  .planos button:hover {
+    background-color: #0056b3;
+    transform: scale(1.05);
+  }
+
+  .btn-plano:active,
+  .botao-pacote:active,
+  .planos button:active {
+    transform: scale(0.97);
+  }
+
+  /* remove sobra da última */
+  .btn-plano:last-child,
+  .botao-pacote:last-child,
+  .planos button:last-child {
+    margin-right: 0;
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "type": "module",
+  "name": "lopesul-dashboard",
+  "version": "1.0.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "next dev --port 3000 --hostname 0.0.0.0",
+    "build": "next build",
+    "postinstall": "prisma generate",
+    "prestart": "prisma migrate deploy || prisma db push",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "start:local": "next start --port 3000 --hostname 0.0.0.0",
+    "studio": "prisma studio --port 5555 --hostname 0.0.0.0",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "node prisma/seed.js",
+    "db:push": "prisma db push",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.3",
+    "autoprefixer": "^10.4.0",
+    "bcryptjs": "^2.4.3",
+    "echarts": "^5.6.0",
+    "echarts-for-react": "^3.0.2",
+    "lucide-react": "^0.513.0",
+    "next": "^15.5.4",
+    "node-ssh": "^13.2.1",
+    "ping": "^0.4.4",
+    "postcss": "^8.4.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-qr-code": "^2.0.18",
+    "recharts": "^3.1.0",
+    "source-map-support": "^0.5.21",
+    "tailwindcss": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "dotenv": "^17.2.3",
+    "prisma": "^6.16.3",
+    "supports-color": "^10.2.2",
+    "typescript": "^5.9.3"
+  }
+}
