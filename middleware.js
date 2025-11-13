@@ -89,21 +89,7 @@ export function middleware(req) {
     return withStdHeaders(NextResponse.next());
   }
 
-  // BLOQUEIO: /pagamento.html só é acessível da rede local
-  if (pathname === '/pagamento.html' || pathname === '/pagamento') {
-    // Tenta múltiplos headers de proxy reverso
-    const cfIp = req.headers.get('cf-connecting-ip');
-    const forwarded = req.headers.get('x-forwarded-for');
-    const realIp = req.headers.get('x-real-ip');
-    const ip = cfIp || realIp || forwarded?.split(',')[0]?.trim() || 'unknown';
-    
-    const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
-      (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31);
-    
-    if (!isLocal) {
-      return new Response('Acesso bloqueado. Conecte-se ao WiFi do onibus.', { status: 403 });
-    }
-  }
+  // /pagamento.html é público - segurança via validação de parâmetros Mikrotik no backend
 
   // 1) Arquivos/caminhos públicos
   if (
