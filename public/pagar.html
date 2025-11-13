@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pagar Wi-Fi Lopesul</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root{
+      --azul-fundo:#1d3a5a; --azul-botao:#2b79c2;
+      --verde:#63b245; --card:#ffffff;
+    }
+    body{ margin:0; background:var(--azul-fundo); color:#fff; font-family:system-ui,sans-serif; }
+    .wrap{ min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+    .card{ width:100%; max-width:480px; background:var(--card); color:#222; border-radius:20px; padding:32px 24px; text-align:center; }
+    h1{ color:var(--azul-fundo); margin:0 0 8px; font-size:28px; }
+    p{ margin:8px 0 24px; color:#666; }
+    .btn{ display:block; width:100%; background:var(--verde); color:#fff; border:0; border-radius:12px; padding:16px; font-size:18px; font-weight:700; cursor:pointer; margin:16px 0; }
+    .btn:hover{ opacity:0.9; }
+    .btn.secondary{ background:var(--azul-botao); }
+    .info{ background:#e3f2fd; border-left:4px solid #2196f3; padding:16px; margin:16px 0; text-align:left; border-radius:8px; }
+    .info strong{ color:#1976d2; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>🚌 Wi-Fi Lopesul</h1>
+      <p>Escolha como deseja pagar pelo acesso à internet</p>
+      
+      <button class="btn" onclick="abrirViaWiFi()">
+        📶 Já estou conectado ao Wi-Fi
+      </button>
+      
+      <button class="btn secondary" onclick="abrirVia4G()">
+        📱 Estou usando 4G (vou conectar depois)
+      </button>
+
+      <div class="info" id="instrucoes" style="display:none">
+        <strong>📝 Próximos passos:</strong>
+        <ol style="margin:8px 0 0; padding-left:20px; text-align:left;">
+          <li>Conecte-se ao Wi-Fi "Lopesul Wi-Fi"</li>
+          <li>Abra qualquer site no navegador</li>
+          <li>Você será redirecionado automaticamente para pagar</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function abrirViaWiFi() {
+      // Usuário já está no WiFi, redireciona para captive portal
+      window.location.href = 'http://api.67-211-212-18.sslip.io/pagamento.html';
+    }
+
+    function abrirVia4G() {
+      // Mostra instruções e abre página de pagamento via HTTPS
+      document.getElementById('instrucoes').style.display = 'block';
+      setTimeout(() => {
+        window.location.href = 'https://dashboard.67-211-212-18.sslip.io/pagamento.html';
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

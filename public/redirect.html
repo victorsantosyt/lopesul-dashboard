@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Redirecionando...</title>
+<meta http-equiv="refresh" content="0; url=https://cativo.lopesuldashboardwifi.com/?mac=$(mac)&ip=$(ip)">
+</head>
+<body>
+<script>
+var mac = "$(mac)";
+var ip = "$(ip)";
+if (mac && ip) {
+  window.location.href = "https://cativo.lopesuldashboardwifi.com/?mac=" + encodeURIComponent(mac) + "&ip=" + encodeURIComponent(ip);
+} else {
+  window.location.href = "https://cativo.lopesuldashboardwifi.com/"\;
+}
+</script>
+<p style="text-align:center;font-family:sans-serif;margin-top:50px;">
+Redirecionando para o portal de pagamento...<br>
+<small>Aguarde</small>
+</p>
+</body>
+</html>

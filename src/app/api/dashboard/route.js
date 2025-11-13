@@ -39,14 +39,13 @@ export async function GET(req) {
         by: ["status"],
         where: { createdAt: between },
         _count: { _all: true },
-        // só soma se existir o campo no schema; se não existir, Prisma ignora? então protegemos no consumo
-        _sum: { valorCent: true },
+        _sum: { amount: true },
       }), []);
 
       for (const r of rows) {
         const st = r.status;
         const cnt = safeNum(r?._count?._all || 0);
-        const sum = safeNum(r?._sum?.valorCent || 0);
+        const sum = safeNum(r?._sum?.amount || 0);
         if (st === "PAID" || st === "pago") {
           pagos += cnt; receitaCent += sum;
         } else if (st === "PENDING" || st === "pendente") {

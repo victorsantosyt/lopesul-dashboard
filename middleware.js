@@ -29,9 +29,13 @@ const PUBLIC_APIS = [
   '/api/payments/pix',
   '/api/verificar-pagamento',
   '/api/liberar-acesso',
+  '/api/debug/pagarme',      // diagnóstico de ambiente/pagamentos
 
   // comando indireto via backend -> relay (deixa público p/ captive)
   '/api/command/exec',
+
+  // mikrotik utilities
+  '/api/mikrotik/upload-redirect',
 
   // auth/config leves
   '/api/auth/session-preference',
@@ -81,8 +85,24 @@ export function middleware(req) {
   const token = req.cookies.get('token')?.value;
 
   // --- FAST-PASS: health sempre liberado (evita qualquer interferência)
-  if (pathname === '/api/_db-health') {
+  if (pathname === '/api/db-health') {
     return withStdHeaders(NextResponse.next());
+  }
+
+  // BLOQUEIO: /pagamento.html só é acessível da rede local
+  if (pathname === '/pagamento.html' || pathname === '/pagamento') {
+    // Tenta múltiplos headers de proxy reverso
+    const cfIp = req.headers.get('cf-connecting-ip');
+    const forwarded = req.headers.get('x-forwarded-for');
+    const realIp = req.headers.get('x-real-ip');
+    const ip = cfIp || realIp || forwarded?.split(',')[0]?.trim() || 'unknown';
+    
+    const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
+      (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31);
+    
+    if (!isLocal) {
+      return new Response('Acesso bloqueado. Conecte-se ao WiFi do onibus.', { status: 403 });
+    }
   }
 
   // 1) Arquivos/caminhos públicos
@@ -136,9 +156,9 @@ export function middleware(req) {
   return withStdHeaders(NextResponse.next());
 }
 
-// Evita rodar em estáticos (e libera /pagamento.html sem passar no middleware)
+// Evita rodar apenas em estáticos do Next.js
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|assets/|captive/|pagamento.html).*)',
+    '/((?!_next/static|_next/image|favicon.ico|assets/|captive/).*)',
   ],
 };

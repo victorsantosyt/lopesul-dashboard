@@ -1,5 +1,6 @@
 // src/app/api/payments/pix/route.js
 import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 
 const toCents = (v) => {
   const n = Number(v);
@@ -52,10 +53,11 @@ export async function POST(req) {
     };
 
     // --- chave secreta Pagar.me ---
-    const secretKey = process.env.PAGARME_SECRET_KEY;
+    const secretKeyRaw = process.env.PAGARME_SECRET_KEY;
+    const secretKey = typeof secretKeyRaw === 'string' ? secretKeyRaw.trim() : '';
     if (!secretKey) {
       console.error("[PIX] PAGARME_SECRET_KEY não configurada");
-      throw new Error("PAGARME_SECRET_KEY não configurada");
+      return NextResponse.json({ error: "PAGARME_SECRET_KEY não configurada" }, { status: 500 });
     }
     const basicAuth = Buffer.from(`${secretKey}:`).toString("base64");
 
@@ -79,22 +81,72 @@ export async function POST(req) {
       body: JSON.stringify(payload)
     });
 
-    const result = await pagarmeResp.json();
+    const result = await pagarmeResp.json().catch(() => ({}));
 
     if (!pagarmeResp.ok) {
       console.error("[PIX] Erro da API Pagar.me:", result);
-      throw new Error(JSON.stringify(result) || `HTTP ${pagarmeResp.status}`);
+      return NextResponse.json(
+        { error: result?.message || "Erro ao criar Pix", detail: result },
+        { status: pagarmeResp.status }
+      );
     }
 
     const lastTransaction = result.charges?.[0]?.last_transaction || {};
+
+    // Normaliza campos de QR Code (Pagar.me varia entre qr_code, qr_code_emv, qr_code_text, emv, payload)
+    const qrText =
+      lastTransaction?.qr_code ||
+      lastTransaction?.qr_code_emv ||
+      lastTransaction?.qr_code_text ||
+      lastTransaction?.emv ||
+      lastTransaction?.payload ||
+      null;
 
     if (lastTransaction.status === "failed") {
       console.error("[PIX] Transação falhou:", lastTransaction.gateway_response);
     }
 
+    // Garante que pix.qr_code exista para os consumidores atuais
+    const pixOut = { ...lastTransaction };
+    if (!pixOut.qr_code && qrText) pixOut.qr_code = qrText;
+
+    // --- Salva o pagamento no banco de dados ---
+    try {
+      // IMPORTANTE: Pagar.me retorna tanto 'id' (or_xxx) quanto 'code' (ABCDEF123)
+      // Webhook pode enviar qualquer um dos dois, então salvamos o CODE no campo code
+      const pedidoData = {
+        code: result.code || result.id, // Usa CODE se existir, senão ID
+        amount: amountInCents,
+        method: "PIX",
+        status: "PENDING",
+        description: descricao,
+        customerName: customer.name,
+        customerEmail: customer.email,
+        customerDoc: customer.document,
+        metadata: { pagarmeOrderId: result.id, pagarmeOrderCode: result.code }
+      };
+
+      // Adiciona IP e MAC somente se forem válidos
+      if (body.clienteIp && typeof body.clienteIp === 'string') {
+        pedidoData.ip = body.clienteIp.trim();
+      }
+      if (body.deviceMac && typeof body.deviceMac === 'string') {
+        pedidoData.deviceMac = body.deviceMac.trim().toUpperCase();
+      }
+
+      console.log("[PIX] Saving to DB:", { code: result.id, ip: pedidoData.ip, mac: pedidoData.deviceMac });
+
+      const savedPedido = await prisma.pedido.create({ data: pedidoData });
+      console.log("[PIX] Saved payment to database:", result.id);
+      console.log("[PIX] Saved data verification:", { ip: savedPedido.ip, mac: savedPedido.deviceMac });
+    } catch (dbError) {
+      console.error("[PIX] Error saving to database:", dbError);
+      console.error("[PIX] Full error:", JSON.stringify(dbError, null, 2));
+    }
+
     return NextResponse.json({
       orderId: result.id,
-      pix: lastTransaction
+      pix: pixOut
     });
   } catch (e) {
     console.error("[PIX] Erro:", e.message || e);

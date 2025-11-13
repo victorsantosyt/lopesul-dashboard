@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 const API = 'https://api.pagar.me/core/v5';
-const SK  = process.env.PAGARME_SECRET_KEY; // defina no .env
+const SK  = (process.env.PAGARME_SECRET_KEY || '').trim(); // defina no .env
 
 // ---- helpers -------------------------------------------------
 function mapPaymentStatus(s) {
@@ -89,6 +89,10 @@ export async function GET(req) {
         amount: p.amount,
         method: p.method,         // PIX | CARD | BOLETO
         status: p.status,         // PENDING | PAID | ...
+        ip: p.ip || null,
+        deviceMac: p.deviceMac || null,
+        customerName: p.customerName || null,
+        customerDoc: p.customerDoc || null,
         createdAt: p.createdAt,
         charge: c ? {
           id: c.id,

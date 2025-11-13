@@ -18,15 +18,21 @@ export async function GET() {
       );
     }
 
-    // 1) Consulta Relay → Mikrotik (sessões PPPoE/Hotspot ativas)
+    // 1) busca frotas do banco
+    const frotas = await prisma.frota.findMany({
+      orderBy: { nome: 'asc' },
+      select: { id: true, nome: true },
+    });
+
+    // 2) tenta pegar sessões ativas do hotspot via relay
     const r = await relayFetch('/relay/exec', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, user, pass, command: '/ppp/active/print' }),
-    }).catch((err) => {
-      console.error('[frotas] Relay request failed:', err);
-      return null;
-    });
+      body: JSON.stringify({
+        host, user, pass,
+        command: '/ip/hotspot/active/print',
+      }),
+    }).catch(() => null);
 
     if (!r) {
       return NextResponse.json(
@@ -36,34 +42,32 @@ export async function GET() {
     }
 
     const j = await r.json().catch(() => ({}));
-    if (!j?.ok || !Array.isArray(j?.data)) {
-      return NextResponse.json(
-        { ok: false, error: 'relay_bad_payload', payload: j },
-        { status: 502, headers: { 'Cache-Control': 'no-store' } }
-      );
-    }
+    const sessoes = Array.isArray(j?.data) ? j.data : [];
 
-    const rows = j.data ?? [];
+    // 3) busca IP-bindings bypassed (clientes liberados automaticamente)
+    const r2 = await relayFetch('/relay/exec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        host, user, pass,
+        command: '/ip/hotspot/ip-binding/print',
+      }),
+    }).catch(() => null);
 
-    // 2) Busca frotas no banco
-    const frotas = await prisma.frota.findMany({
-      orderBy: { nome: 'asc' },
-      select: { id: true, nome: true },
-    });
+    const j2 = await r2?.json().catch(() => ({}));
+    const bindings = Array.isArray(j2?.data) ? j2.data : [];
+    const bypassedBindings = bindings.filter(b => b?.type === 'bypassed' || b?.bypassed === 'true');
 
-    // 3) Correlaciona cada frota com sessões ativas
+    // 4) conta total de acessos (sessões ativas + bindings bypassed)
+    const totalAcessos = sessoes.length + bypassedBindings.length;
+
+    // 5) monta resposta com acessos totais para cada frota
     const resposta = frotas.map((f) => {
-      const nomeFrota = (f.nome || '').toLowerCase();
-      const match = rows.find((s) => {
-        const nm = (s?.name || s?.user || '').toString().toLowerCase();
-        return nm.includes(nomeFrota);
-      });
-
       return {
         ...f,
-        vendas: 0, // resumo real vem de /frotas/[id]
-        acessos: match ? 1 : 0,
-        status: match ? 'online' : 'offline',
+        valorTotal: 0,
+        acessos: totalAcessos,
+        status: totalAcessos > 0 ? 'online' : 'offline',
       };
     });
 

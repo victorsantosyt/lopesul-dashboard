@@ -45,6 +45,8 @@
     .code{ background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; font-size:12px; color:#666; max-height:90px; overflow:auto; word-break:break-all }
     .btn{ width:100%; background:#0a73c0; color:#fff; border:0; border-radius:10px; padding:12px 16px; font-weight:700; cursor:pointer; margin-top:10px }
     .btn:hover{ background:#085fa0 }
+    .btn:disabled{ opacity:0.6; cursor:not-allowed }
+    #btn-ja-paguei:hover:not(:disabled){ background:#218838 !important }
     .pill{ margin-top:10px; border-radius:8px; padding:10px; font-weight:700; border:1px solid }
     .pill.warn{ background:#fff3cd; border-color:#ffeaa7; color:#856404 }
     .pill.info{ background:#d1ecf1; border-color:#bee5eb; color:#0c5460 }
@@ -111,6 +113,9 @@
 
       <div class="code" id="pix-code"></div>
       <button class="btn" onclick="copiarPix()">📋 Copiar código Pix</button>
+      <button class="btn" id="btn-ja-paguei" onclick="verificarPagamentoManual()" style="background:#28a745; margin-top:8px">
+        ✅ Já Paguei
+      </button>
 
       <div class="pill warn" id="timer">⏰ Tempo livre: 2:00</div>
       <div class="pill info" id="status">🔄 Aguardando pagamento...</div>
@@ -124,9 +129,39 @@
       const API = ""; // mesmo domínio
 
       const get = (n) => new URLSearchParams(location.search).get(n);
-      const mac = get("mac") || null;
-      const ip = get("ip") || null;
+      let mac = get("mac") || null;
+      let ip = get("ip") || null;
       const linkOrig = get("link_orig") || get("link-orig") || "";
+      
+      // Detecta IP e MAC automaticamente via API
+      (async () => {
+        try {
+          const res = await fetch('/api/detect-client');
+          const data = await res.json();
+          
+          if (!ip && data.ip) {
+            ip = data.ip;
+            console.log('[Portal] IP detectado:', ip);
+          }
+          
+          // Tenta buscar MAC via ARP do Mikrotik (se IP está disponível)
+          if (ip && !mac) {
+            try {
+              const arpRes = await fetch(`/api/mikrotik/arp?ip=${ip}`);
+              const arpData = await arpRes.json();
+              if (arpData.mac) {
+                mac = arpData.mac;
+                console.log('[Portal] MAC encontrado via ARP:', mac);
+              }
+            } catch (e) {
+              console.warn('[Portal] Não foi possível buscar MAC via ARP:', e);
+            }
+          }
+          
+        } catch (e) {
+          console.error('[Portal] Erro ao detectar cliente:', e);
+        }
+      })();
 
       let nomeCli = get("nome") || get("name") || "Cliente";
       let docCli  = get("doc")  || get("document") || "";
@@ -208,14 +243,8 @@
               limparFluxo();
               const s = document.getElementById('status');
               s.className = 'pill ok';
-              s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
-              try {
-                await fetch(`${API}/api/liberar-acesso`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ externalId: REF, mac, ip, linkOrig })
-                });
-              } catch {}
+              s.textContent = '✅ Pagamento confirmado! Acesso liberado.';
+              // Webhook já liberou o acesso, apenas redireciona
               setTimeout(() => {
                 try {
                   const fallback = 'http://clients3.google.com/generate_204';
@@ -327,6 +356,84 @@
           s.textContent = '📋 Código Pix copiado!';
           setTimeout(() => { s.textContent = orig; }, 1800);
         });
+      }
+
+      window.verificarPagamentoManual = async function() {
+        if (!REF) return;
+        const btn = document.getElementById('btn-ja-paguei');
+        const s = document.getElementById('status');
+        const origBtn = btn.textContent;
+        const origStatus = s.textContent;
+
+        btn.disabled = true;
+        btn.textContent = '🔄 Verificando...';
+        s.className = 'pill info';
+        s.textContent = '🔍 Consultando status do pagamento...';
+
+        try {
+          const r = await fetch(`${API}/api/verificar-pagamento`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ externalId: REF })
+          });
+          
+          if (!r.ok) {
+            s.className = 'pill err';
+            s.textContent = '❌ Erro ao verificar pagamento. Tente novamente.';
+            btn.disabled = false;
+            btn.textContent = origBtn;
+            return;
+          }
+
+          const j = await r.json();
+          const status = j?.status;
+
+          if (status === 'pago' || j?.pago) {
+            limparFluxo();
+            s.className = 'pill ok';
+            s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
+            btn.textContent = '✅ Pago';
+            try {
+              await fetch(`${API}/api/liberar-acesso`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ externalId: REF, mac, ip, linkOrig })
+              });
+            } catch {}
+            setTimeout(() => {
+              try {
+                const fallback = 'http://clients3.google.com/generate_204';
+                const candidate = linkOrig || fallback;
+                window.location.href = candidate;
+              } catch { window.location.href = '/'; }
+            }, 1200);
+          } else if (status === 'pendente') {
+            s.className = 'pill warn';
+            s.textContent = '⏳ Pagamento ainda não identificado. Aguarde alguns instantes.';
+            btn.disabled = false;
+            btn.textContent = origBtn;
+          } else if (status === 'expirado') {
+            s.className = 'pill err';
+            s.textContent = '⏳ Pagamento expirado. Gere um novo QR.';
+            btn.disabled = false;
+            btn.textContent = origBtn;
+          } else if (status === 'cancelado') {
+            s.className = 'pill err';
+            s.textContent = '❌ Pagamento cancelado.';
+            btn.disabled = false;
+            btn.textContent = origBtn;
+          } else {
+            s.className = 'pill info';
+            s.textContent = origStatus;
+            btn.disabled = false;
+            btn.textContent = origBtn;
+          }
+        } catch (e) {
+          s.className = 'pill err';
+          s.textContent = '❌ Erro de conexão. Tente novamente.';
+          btn.disabled = false;
+          btn.textContent = origBtn;
+        }
       }
 
       function formatarDoc(value){

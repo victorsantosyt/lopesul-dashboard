@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Teste Hotspot - Simulação</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; margin-top: 0; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #0a73c0;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #085fa0; }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-left: 4px solid #0a73c0;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🧪 Teste de Hotspot</h1>
+        <p>Esta página simula o redirecionamento do MikroTik com MAC e IP.</p>
+        
+        <div class="info">
+            <strong>Como usar:</strong><br>
+            1. Preencha MAC e IP do cliente<br>
+            2. Clique em "Simular Hotspot"<br>
+            3. Será redirecionado para o portal com os parâmetros corretos
+        </div>
+        
+        <label>
+            <strong>MAC Address:</strong>
+            <input type="text" id="mac" placeholder="AA:BB:CC:DD:EE:FF" value="00:11:22:33:44:55">
+        </label>
+        
+        <label>
+            <strong>IP Address:</strong>
+            <input type="text" id="ip" placeholder="192.168.88.100" value="192.168.88.100">
+        </label>
+        
+        <label>
+            <strong>Link Original (opcional):</strong>
+            <input type="text" id="link" placeholder="http://example.com" value="http://neverssl.com">
+        </label>
+        
+        <button onclick="simular()">🚀 Simular Hotspot</button>
+    </div>
+    
+    <script>
+        function simular() {
+            const mac = document.getElementById('mac').value.trim();
+            const ip = document.getElementById('ip').value.trim();
+            const link = document.getElementById('link').value.trim();
+            
+            if (!mac || !ip) {
+                alert('Por favor, preencha MAC e IP!');
+                return;
+            }
+            
+            const params = new URLSearchParams();
+            params.append('mac', mac);
+            params.append('ip', ip);
+            if (link) params.append('link-orig', link);
+            
+            const url = `/pagamento.html?${params.toString()}`;
+            console.log('Redirecionando para:', url);
+            window.location.href = url;
+        }
+        
+        // Atalho Enter
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') simular();
+            });
+        });
+    </script>
+</body>
+</html>

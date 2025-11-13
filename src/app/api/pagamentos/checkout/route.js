@@ -65,21 +65,94 @@ export async function POST(req) {
 
     console.log('[CHECKOUT] URL PIX:', pixUrl); // Debug
 
+    // Detectar IP do cliente automaticamente se não vier nos parâmetros
+    let clienteIp = body?.clienteIp || null;
+    if (!clienteIp || clienteIp === '$(ip)') {
+      // Tentar detectar via headers HTTP
+      clienteIp = headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                  headers.get('x-real-ip') ||
+                  headers.get('cf-connecting-ip') ||
+                  null;
+      console.log('[CHECKOUT] IP detectado via header:', clienteIp);
+    }
+    
+    const pixPayload = {
+      valor: body?.valor,          // VALOR EM REAIS (não centavos)
+      descricao,
+      customer,
+      expires_in: expiresIn,
+      clienteIp,
+      deviceMac: body?.clienteMac && body?.clienteMac !== '$(mac)' ? body?.clienteMac : null,
+      metadata: { origem: "checkout-endpoint", ...(body?.metadata || {}) },
+      orderId,
+    };
+    
+    // Descobrir MAC automaticamente se temos IP mas não temos MAC
+    let deviceMac = pixPayload.deviceMac;
+    if (!deviceMac && clienteIp) {
+      try {
+        console.log('[CHECKOUT] Tentando descobrir MAC via IP:', clienteIp);
+        
+        // Opção 1: Consultar hotspot active sessions
+        const relayUrl = process.env.RELAY_URL || process.env.RELAY_BASE || 'http://localhost:3001';
+        const relayToken = process.env.RELAY_TOKEN;
+        const arpResp = await fetch(`${relayUrl}/relay/exec`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(relayToken && { 'Authorization': `Bearer ${relayToken}` })
+          },
+          body: JSON.stringify({ command: `/ip hotspot active print where address=${clienteIp}` })
+        }).catch(() => null);
+        
+        if (arpResp?.ok) {
+          const arpData = await arpResp.json().catch(() => ({}));
+          const output = arpData?.output || '';
+          // Parse MAC from output: procurar por padrão XX:XX:XX:XX:XX:XX
+          const macMatch = output.match(/mac-address=([0-9A-Fa-f:]{17})/);
+          if (macMatch) {
+            deviceMac = macMatch[1];
+            console.log('[CHECKOUT] MAC descoberto via hotspot active:', deviceMac);
+          }
+        }
+        
+        // Opção 2: Se não achou, tentar ARP
+        if (!deviceMac) {
+          const arpResp2 = await fetch(`${relayUrl}/relay/exec`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              ...(relayToken && { 'Authorization': `Bearer ${relayToken}` })
+            },
+            body: JSON.stringify({ command: `/ip arp print where address=${clienteIp}` })
+          }).catch(() => null);
+          
+          if (arpResp2?.ok) {
+            const arpData2 = await arpResp2.json().catch(() => ({}));
+            const output2 = arpData2?.output || '';
+            const macMatch2 = output2.match(/mac-address=([0-9A-Fa-f:]{17})/);
+            if (macMatch2) {
+              deviceMac = macMatch2[1];
+              console.log('[CHECKOUT] MAC descoberto via ARP:', deviceMac);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[CHECKOUT] Erro ao descobrir MAC:', err.message);
+      }
+    }
+    
+    // Atualizar deviceMac no payload
+    pixPayload.deviceMac = deviceMac;
+    
+    console.log('[CHECKOUT] Sending to PIX:', { clienteIp: pixPayload.clienteIp, deviceMac: pixPayload.deviceMac });
+
     const upstream = await fetch(pixUrl, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        valor: body?.valor,          // VALOR EM REAIS (não centavos)
-        descricao,
-        customer,
-        expires_in: expiresIn,
-        clienteIp: body?.clienteIp ?? null,
-        deviceMac: body?.clienteMac ?? null,
-        metadata: { origem: "checkout-endpoint", ...(body?.metadata || {}) },
-        orderId,
-      }),
+      body: JSON.stringify(pixPayload),
     });
 
     const j = await upstream.json().catch(() => ({}));

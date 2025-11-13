@@ -13,6 +13,7 @@ export default function MikrotikCard() {
   });
 
   useEffect(() => {
+    let interval;
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
 
@@ -43,6 +44,10 @@ export default function MikrotikCard() {
 
       const net = netJson ?? { mikrotik: { online: false }, starlink: { online: false } };
 
+      console.log('[MikrotikCard] Raw netJson:', JSON.stringify(netJson));
+      console.log('[MikrotikCard] Processed net:', JSON.stringify(net));
+      console.log('[MikrotikCard] MikroTik online?:', net?.mikrotik?.online);
+
       setState({ loading: false, relay, net });
     }
 
@@ -55,8 +60,12 @@ export default function MikrotikCard() {
       });
     });
 
+    // Refresh a cada 10 segundos
+    interval = setInterval(fetchAll, 10000);
+
     return () => {
       clearTimeout(timer);
+      clearInterval(interval);
       ctl.abort();
     };
   }, []);

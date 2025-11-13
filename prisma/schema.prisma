@@ -86,6 +86,7 @@ model Pedido {
   customerEmail String?
   customerDoc   String?
   metadata      Json?
+  processedAt   DateTime?     // Worker automation
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   charges       Charge[]
@@ -93,6 +94,7 @@ model Pedido {
 
   @@index([status, createdAt])
   @@index([method, createdAt])
+  @@index([status, processedAt])
 }
 
 model Charge {

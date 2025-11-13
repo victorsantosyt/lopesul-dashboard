@@ -101,13 +101,7 @@ export async function POST(req) {
           providerId: pgCharge?.id || null,
           status: mappedStatus,
           method: "CARD",
-          amount: amount,
-          // campos extras úteis p/ debug/estorno/recorrência:
-          authorizationCode: pgCharge?.last_transaction?.authorization_code || null,
-          nsu: pgCharge?.last_transaction?.nsu || null,
-          tid: pgCharge?.last_transaction?.tid || null,
-          acquirer: pgCharge?.last_transaction?.acquirer_name || null,
-          raw: pg, // manter no início; depois você pode filtrar
+          raw: pg,
         },
         update: {
           status: mappedStatus,

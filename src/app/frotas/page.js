@@ -36,41 +36,22 @@ export default function FrotasPage() {
     fetchFrotas();
   }, []);
 
-  // Atualiza status técnico a cada 15s (ping, latência)
+  // Atualiza frotas a cada 15s buscando da API principal
   useEffect(() => {
     if (frotas.length === 0) return;
 
-    const atualizarStatus = async () => {
+    const atualizarFrotas = async () => {
       try {
-        const atualizadas = await Promise.all(
-          frotas.map(async (frota) => {
-            if (!frota?.id) return frota;
-
-            try {
-              const res = await fetch(`/api/frotas/${frota.id}/status`);
-              if (!res.ok) throw new Error();
-              const statusData = await res.json();
-
-              return {
-                ...frota,
-                pingMs: statusData?.rttMs ?? null,
-                perdaPct: statusData?.perdaPct ?? null,
-                status: statusData?.pingOk ? 'online' : 'offline',
-              };
-            } catch {
-              return { ...frota, status: 'offline', pingMs: null, perdaPct: null };
-            }
-          })
-        );
-
-        setFrotas(atualizadas);
-      } catch (err) {
-        console.warn('Falha ao atualizar status:', err);
+        const res = await fetch('/api/frotas', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setFrotas(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.warn('Erro ao atualizar frotas:', error);
       }
     };
 
-    atualizarStatus();
-    const timer = setInterval(atualizarStatus, 15000); // 15s
+    const timer = setInterval(atualizarFrotas, 15000); // 15s
     return () => clearInterval(timer);
   }, [frotas.length]);
 

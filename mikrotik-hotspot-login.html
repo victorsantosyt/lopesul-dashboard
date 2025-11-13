@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Fi Lopesul</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 400px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #5568d3;
+        }
+        .loader {
+            margin: 20px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚌 Wi-Fi Lopesul</h1>
+        <p>Redirecionando para o portal de pagamento...</p>
+        <div class="loader"></div>
+        <p style="font-size: 12px; color: #999; margin-top: 20px;">
+            Se não for redirecionado automaticamente, clique no botão abaixo:
+        </p>
+        <a href="https://cativo.lopesuldashboardwifi.com/pagamento.html?mac=$(mac)&ip=$(ip)$(if link-orig)&link-orig=$(link-orig)$(endif)" class="btn">
+            Acessar Portal
+        </a>
+    </div>
+    
+    <script>
+        // Redireciona automaticamente após 2 segundos
+        setTimeout(function() {
+            var linkOrig = '$(link-orig)';
+            var mac = '$(mac)';
+            var ip = '$(ip)';
+            
+            var url = 'https://cativo.lopesuldashboardwifi.com/pagamento.html';
+            var params = [];
+            
+            if (mac && mac !== '$(mac)') {
+                params.push('mac=' + encodeURIComponent(mac));
+            }
+            if (ip && ip !== '$(ip)') {
+                params.push('ip=' + encodeURIComponent(ip));
+            }
+            if (linkOrig && linkOrig !== '$(link-orig)') {
+                params.push('link-orig=' + encodeURIComponent(linkOrig));
+            }
+            
+            if (params.length > 0) {
+                url += '?' + params.join('&');
+            }
+            
+            window.location.href = url;
+        }, 2000);
+    </script>
+</body>
+</html>
