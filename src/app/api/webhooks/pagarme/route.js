@@ -2,9 +2,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-// ⬇️ trocar named import por default + desestruturação
-import mikrotik from "@/lib/mikrotik";
-const { liberarClienteNoMikrotik } = mikrotik;
+import { liberarAcesso } from "@/lib/mikrotik";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -170,15 +168,15 @@ async function markPaidAndRelease(orderCode) {
   }
   
   try {
-    await liberarClienteNoMikrotik({
+    await liberarAcesso({
       ip,
       mac: deviceMac,
-      busId: pedido.busId,
-      minutos: 120,
+      username: `user_${pedido.id}`,
+      comment: `Pedido ${orderCode} - ${pedido.id}`,
     });
-    console.log('[webhook] liberarClienteNoMikrotik concluído');
+    console.log('[webhook] Acesso liberado com sucesso!');
   } catch (e) {
-    console.error('[webhook] Erro em liberarClienteNoMikrotik:', e);
+    console.error('[webhook] Erro ao liberar acesso:', e);
   }
 }
 
