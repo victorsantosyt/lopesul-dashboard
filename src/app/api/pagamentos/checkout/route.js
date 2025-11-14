@@ -91,54 +91,27 @@ export async function POST(req) {
     let deviceMac = pixPayload.deviceMac;
     if (!deviceMac && clienteIp) {
       try {
-        console.log('[CHECKOUT] Tentando descobrir MAC via IP:', clienteIp);
-        
-        // Opção 1: Consultar hotspot active sessions
-        const relayUrl = process.env.RELAY_URL || process.env.RELAY_BASE || 'http://localhost:3001';
-        const relayToken = process.env.RELAY_TOKEN;
-        const arpResp = await fetch(`${relayUrl}/relay/exec`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            ...(relayToken && { 'Authorization': `Bearer ${relayToken}` })
-          },
-          body: JSON.stringify({ command: `/ip hotspot active print where address=${clienteIp}` })
-        }).catch(() => null);
-        
-        if (arpResp?.ok) {
-          const arpData = await arpResp.json().catch(() => ({}));
-          const output = arpData?.output || '';
-          // Parse MAC from output: procurar por padrão XX:XX:XX:XX:XX:XX
-          const macMatch = output.match(/mac-address=([0-9A-Fa-f:]{17})/);
-          if (macMatch) {
-            deviceMac = macMatch[1];
-            console.log('[CHECKOUT] MAC descoberto via hotspot active:', deviceMac);
+        console.log('[CHECKOUT] Tentando descobrir MAC via IP (API interna):', clienteIp);
+
+        // Usa o endpoint interno que já fala com o Relay e parseia a ARP table
+        const arpRes = await fetch(
+          `${baseUrl}/api/mikrotik/arp?ip=${encodeURIComponent(clienteIp)}`,
+          { cache: 'no-store' }
+        ).catch(() => null);
+
+        if (arpRes?.ok) {
+          const data = await arpRes.json().catch(() => ({}));
+          if (data?.mac) {
+            deviceMac = String(data.mac).trim().toUpperCase();
+            console.log('[CHECKOUT] MAC descoberto via /api/mikrotik/arp:', deviceMac);
+          } else {
+            console.log('[CHECKOUT] /api/mikrotik/arp não retornou MAC:', data?.message || data?.error || null);
           }
-        }
-        
-        // Opção 2: Se não achou, tentar ARP
-        if (!deviceMac) {
-          const arpResp2 = await fetch(`${relayUrl}/relay/exec`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              ...(relayToken && { 'Authorization': `Bearer ${relayToken}` })
-            },
-            body: JSON.stringify({ command: `/ip arp print where address=${clienteIp}` })
-          }).catch(() => null);
-          
-          if (arpResp2?.ok) {
-            const arpData2 = await arpResp2.json().catch(() => ({}));
-            const output2 = arpData2?.output || '';
-            const macMatch2 = output2.match(/mac-address=([0-9A-Fa-f:]{17})/);
-            if (macMatch2) {
-              deviceMac = macMatch2[1];
-              console.log('[CHECKOUT] MAC descoberto via ARP:', deviceMac);
-            }
-          }
+        } else if (arpRes) {
+          console.warn('[CHECKOUT] /api/mikrotik/arp HTTP status:', arpRes.status);
         }
       } catch (err) {
-        console.warn('[CHECKOUT] Erro ao descobrir MAC:', err.message);
+        console.warn('[CHECKOUT] Erro ao descobrir MAC via API interna:', err.message);
       }
     }
     

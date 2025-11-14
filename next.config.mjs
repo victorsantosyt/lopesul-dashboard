@@ -12,7 +12,12 @@ const nextConfig = {
       // opcional: você pode ajustar limites se usar Server Actions
       // bodySizeLimit: "2mb",
     },
+    // Garante que o App Router (src/app) esteja habilitado também em produção
+    appDir: true,
   },
+
+  // Desliga typedRoutes (gera tipos com imports quebrados para app/ quando usamos src/app)
+  typedRoutes: false,
 
   webpack: (config, { isServer }) => {
     // Alias @ -> src
