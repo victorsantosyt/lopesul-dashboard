@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { checkAnyOnline, checkStarlink } from '@/lib/netcheck';
+import { relayFetch } from '@/lib/relay';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,10 @@ export async function GET() {
     const since = new Date();
     since.setDate(since.getDate() - DAYS);
 
-    // Busca frotas com dispositivos e vendas recentes
+    const user = process.env.MIKROTIK_USER || '';
+    const pass = process.env.MIKROTIK_PASS || '';
+
+    // Busca frotas com dispositivos, vendas recentes e roteador vinculado
     const frotas = await prisma.frota.findMany({
       orderBy: { nome: 'asc' },
       include: {
@@ -24,6 +28,15 @@ export async function GET() {
         vendas: {
           where: { data: { gte: since } },
           select: { valorCent: true },
+        },
+        roteador: {
+          select: {
+            id: true,
+            nome: true,
+            ipLan: true,
+            statusMikrotik: true,
+            statusWireguard: true,
+          },
         },
       },
     });
@@ -35,6 +48,7 @@ export async function GET() {
 
         let mk = { online: false, lastHost: null };
         let sl = { online: false, lastHost: null };
+        let mikrotikIdentity = null;
 
         if (ips.length > 0) {
           try {
@@ -47,6 +61,30 @@ export async function GET() {
             sl = await checkStarlink(ips);
           } catch (e) {
             console.warn('checkStarlink falhou para frota', f.id, e?.message || e);
+          }
+
+          // Se o Mikrotik desta frota estiver online e tivermos credenciais, tenta obter o identity
+          if (mk.online && mk.lastHost && user && pass) {
+            try {
+              const r = await relayFetch('/relay/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  host: mk.lastHost,
+                  user,
+                  pass,
+                  command: '/system/identity/print',
+                }),
+              }).catch(() => null);
+
+              const j = await r?.json().catch(() => null);
+              const rows = Array.isArray(j?.data) ? j.data : [];
+              if (rows[0]?.name) {
+                mikrotikIdentity = rows[0].name;
+              }
+            } catch (e) {
+              console.warn('identity fetch falhou para frota', f.id, e?.message || e);
+            }
           }
         }
 
@@ -65,11 +103,18 @@ export async function GET() {
           statusStarlink: sl.online ? 'online' : 'offline',
           mikrotikHost: mk.lastHost ?? null,
           starlinkHost: sl.lastHost ?? null,
+          mikrotikIdentity,
           pingMs: null,
           perdaPct: null,
           valorTotal: Number(receitaCentavos / 100),
           valorTotalCentavos: Number(receitaCentavos),
           periodoDias: DAYS,
+          // Dados do Roteador vinculado (se houver)
+          roteadorId: f.roteadorId ?? null,
+          roteadorNome: f.roteador?.nome ?? null,
+          roteadorIpLan: f.roteador?.ipLan ?? null,
+          roteadorStatusMikrotik: f.roteador?.statusMikrotik ?? null,
+          roteadorStatusWireguard: f.roteador?.statusWireguard ?? null,
         };
       })
     );

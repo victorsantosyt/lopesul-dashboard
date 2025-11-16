@@ -9,6 +9,8 @@ datasource db {
 }
 
 model Operador {
+  role     String?
+
   id       String   @id @default(uuid())
   nome     String   @unique @map("usuario")
   senha    String
@@ -18,10 +20,36 @@ model Operador {
   @@map("operadores")
 }
 
+// Status da frota (ônibus)
+enum FrotaStatus {
+  ATIVO
+  INATIVO
+  MANUTENCAO
+}
+
+// Status técnico de roteadores / túneis
+enum RoteadorStatus {
+  DESCONHECIDO
+  ONLINE
+  OFFLINE
+  ERRO
+}
+
 model Frota {
   id           String        @id @default(uuid())
   criadoEm     DateTime      @default(now()) @map("createdAt")
-  nome         String?
+  nome         String?       // nome legado/opcional
+
+  // Campos de negócio da frota
+  placa        String?
+  rotaLinha    String?
+  status       FrotaStatus   @default(ATIVO)
+  observacoes  String?
+
+  // Relacionamento opcional com Roteador (1 frota -> 1 roteador)
+  roteadorId   String?       @unique
+  roteador     Roteador?     @relation(fields: [roteadorId], references: [id])
+
   dispositivos Dispositivo[]
   vendas       Venda[]
 
@@ -48,6 +76,31 @@ model Dispositivo {
 
   @@unique([frotaId, ip])
   @@index([ip])
+}
+
+// Novo modelo para Mikrotiks / roteadores
+model Roteador {
+  id        String   @id @default(cuid())
+  nome      String   // ex: "Router Bus 1" ou "Onibus_101"
+  ipLan     String   // ex: "10.200.200.2" ou "192.168.88.1"
+  usuario   String   // usuário API/SSH (ex: admin)
+  senhaHash String   // senha criptografada
+
+  portaApi  Int      @default(8728)
+  portaSsh  Int      @default(22)
+
+  // Dados de WireGuard (lado Mikrotik)
+  wgPublicKey String? // chave pública do Mikrotik
+  wgIp        String? // ex: "10.200.200.2/32"
+
+  statusMikrotik  RoteadorStatus @default(DESCONHECIDO)
+  statusWireguard RoteadorStatus @default(DESCONHECIDO)
+
+  // Relacionamento opcional com Frota (1 roteador -> 1 frota)
+  frota    Frota?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SessaoAtiva {
