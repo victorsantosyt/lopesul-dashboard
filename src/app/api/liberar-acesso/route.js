@@ -3,8 +3,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import prisma from '@/lib/prisma';
-import mikrotik from '@/lib/mikrotik';
-const { liberarCliente } = mikrotik;
+import { liberarAcessoPorPedido } from '@/lib/mikrotikService';
 
 /* ===== helpers ===== */
 function json(payload, status = 200, extraHeaders = {}) {
@@ -36,7 +35,6 @@ const IPV4_RE =
 function normMac(s) {
   if (!s) return null;
   const up = String(s).trim().toUpperCase();
-  // aceita com : ou -; normaliza para :
   const mac = up.replace(/-/g, ':');
   return MAC_RE.test(mac) ? mac : null;
 }
@@ -54,7 +52,7 @@ export async function POST(req) {
     if (!externalId && !pagamentoId && !txid) {
       return json(
         { ok: false, error: 'Informe externalId (code), pagamentoId ou txid.' },
-        400
+        400,
       );
     }
 
@@ -95,48 +93,65 @@ export async function POST(req) {
     }
 
     // ============ decidir IP/MAC e validar ============
-    const ipFinal  = normIp(ip || pedido.ip || null);
+    const ipFinal = normIp(ip || pedido.ip || null);
     const macFinal = normMac(mac || pedido.deviceMac || null);
 
-    // comentário curto e rastreável
-    const comment = `pedido:${pedido.id}`.slice(0, 64);
+    if (!ipFinal && !macFinal) {
+      return json(
+        {
+          ok: false,
+          error: 'Sem IP/MAC válidos (nem no payload, nem no Pedido).',
+          pedidoId: pedido.id,
+          code: pedido.code,
+        },
+        400,
+      );
+    }
 
-    // ============ liberação no MikroTik ============
-    let mk = { ok: true, note: 'sem ip/mac válidos; apenas status atualizado' };
+    console.log('[liberar-acesso] Liberando acesso via mikrotikService', {
+      pedidoId: pedido.id,
+      code: pedido.code,
+      ip: ipFinal,
+      mac: macFinal,
+      busId: pedido.busId,
+    });
 
-    if (ipFinal || macFinal) {
-      try {
-        mk = await liberarCliente({
-          ip: ipFinal || undefined,
-          mac: macFinal || undefined,
-          comment,
-        });
-      } catch (e) {
-        // se falhar a liberação, reporta 502 mas mantém pedido atualizado
-        return json(
-          {
-            ok: false,
-            error: e?.message || 'falha liberarCliente',
-            pedidoId: pedido.id,
-            code: pedido.code,
-            status: pedido.status,
-          },
-          502
-        );
-      }
+    let result;
+    try {
+      result = await liberarAcessoPorPedido({
+        pedido,
+        ipOverride: ipFinal,
+        macOverride: macFinal,
+        origem: 'api/liberar-acesso',
+        criarSessao: true,
+      });
+    } catch (e) {
+      console.error('[liberar-acesso] Erro ao liberar acesso (multi-roteador):', e);
+      return json(
+        {
+          ok: false,
+          error: e?.message || 'falha liberarAcessoPorPedido',
+          pedidoId: pedido.id,
+          code: pedido.code,
+          status: pedido.status,
+        },
+        502,
+      );
     }
 
     return json(
       {
-        ok: true,
+        ok: result.ok,
         pedidoId: pedido.id,
         code: pedido.code,
-        status: pedido.status, // esperado: PAID
-        mikrotik: mk,
+        status: pedido.status,
+        roteadorId: result.roteadorId || null,
+        sessaoId: result.sessaoId || null,
+        mikrotik: result.mikrotik,
         redirect: linkOrig || null,
       },
       200,
-      { 'Cache-Control': 'no-store' }
+      { 'Cache-Control': 'no-store' },
     );
   } catch (e) {
     console.error('POST /api/liberar-acesso error:', e);

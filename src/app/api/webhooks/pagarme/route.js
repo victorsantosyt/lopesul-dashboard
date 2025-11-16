@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { liberarAcesso } from "@/lib/mikrotik";
+import { liberarAcessoPorPedido } from "@/lib/mikrotikService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ function verifyPagarmeSignature(rawBody, signatureHeader) {
     console.log('[webhook] Assinatura inválida mas aceitando mesmo assim');
     console.log('[webhook] Expected:', expected);
     console.log('[webhook] Got:', provided);
-    // Aceita mesmo com assinatura inválida em produção
+    // Aceita mesmo com assinatura inválida em produção (modo permissivo)
     return true;
   }
   
@@ -115,7 +115,7 @@ function extractBasics(evt) {
   };
 }
 
-/** Marca pedido como pago e libera no Mikrotik */
+/** Marca pedido como pago e libera no Mikrotik correto (multi-roteador) */
 async function markPaidAndRelease(orderCode) {
   // Tenta buscar pelo campo 'code' (que armazena o 'id' or_xxx)
   let pedido = await prisma.pedido.findFirst({ where: { code: orderCode } });
@@ -127,9 +127,9 @@ async function markPaidAndRelease(orderCode) {
       where: {
         metadata: {
           path: ['pagarmeOrderCode'],
-          equals: orderCode
-        }
-      }
+          equals: orderCode,
+        },
+      },
     });
   }
   
@@ -138,45 +138,56 @@ async function markPaidAndRelease(orderCode) {
     return;
   }
 
-  console.log('[webhook] Pedido encontrado:', { ip: pedido.ip, mac: pedido.deviceMac, status: pedido.status });
+  console.log('[webhook] Pedido encontrado para liberação:', {
+    id: pedido.id,
+    code: pedido.code,
+    status: pedido.status,
+    ip: pedido.ip,
+    mac: pedido.deviceMac,
+    busId: pedido.busId,
+  });
 
+  // Garante status PAID (idempotente); o handler principal já faz isso também
   if (pedido.status !== "PAID") {
-    await prisma.pedido.update({
+    pedido = await prisma.pedido.update({
       where: { id: pedido.id },
       data: { status: "PAID" },
     });
     console.log('[webhook] Status atualizado para PAID');
   }
 
-  // Se não tem MAC/IP, tenta buscar no MikroTik pelo DHCP lease mais recente
-  let { ip, deviceMac } = pedido;
-  
-  if (!ip || !deviceMac) {
-    console.log('[webhook] MAC ou IP ausente, usando último cliente conectado...');
-    // Como o relay está com problema, vamos usar uma abordagem simples:
-    // Se o pagamento foi feito agora, provavelmente é o último cliente que conectou
-    // Por enquanto, vamos apenas logar e continuar sem MAC/IP
-    // O importante é que quando tiver MAC/IP na URL, vai funcionar 100%
-    console.log('[webhook] Pulando busca automática por enquanto');
-  }
+  const ip = pedido.ip || null;
+  const mac = pedido.deviceMac || null;
 
-  console.log('[webhook] Chamando liberarClienteNoMikrotik:', { ip, mac: deviceMac });
-  
-  if (!ip && !deviceMac) {
-    console.log('[webhook] ERRO: IP e MAC ausentes mesmo após busca no MikroTik!');
+  if (!ip && !mac) {
+    console.log('[webhook] ERRO: Pedido sem IP/MAC para liberar', { id: pedido.id });
     return;
   }
-  
+
+  console.log('[webhook] Liberando acesso multi-Mikrotik para pedido:', {
+    id: pedido.id,
+    code: pedido.code,
+    ip,
+    mac,
+    busId: pedido.busId,
+  });
+
   try {
-    await liberarAcesso({
-      ip,
-      mac: deviceMac,
-      username: `user_${pedido.id}`,
-      comment: `Pedido ${orderCode} - ${pedido.id}`,
+    const res = await liberarAcessoPorPedido({
+      pedido,
+      ipOverride: ip,
+      macOverride: mac,
+      origem: 'webhook',
+      criarSessao: true,
     });
-    console.log('[webhook] Acesso liberado com sucesso!');
+
+    console.log('[webhook] Resultado Mikrotik:', {
+      ok: res.ok,
+      roteadorId: res.roteadorId,
+      sessaoId: res.sessaoId,
+    });
   } catch (e) {
-    console.error('[webhook] Erro ao liberar acesso:', e);
+    console.error('[webhook] Erro ao liberar acesso (multi-roteador):', e);
   }
 }
 
@@ -224,7 +235,7 @@ export async function POST(req) {
     if (basics.orderCode) {
       // Tenta buscar pelo campo 'code' primeiro
       let pedidoExistente = await prisma.pedido.findFirst({
-        where: { code: basics.orderCode }
+        where: { code: basics.orderCode },
       });
       
       // Se não encontrou, tenta buscar pelo 'code' armazenado no metadata
@@ -233,9 +244,9 @@ export async function POST(req) {
           where: {
             metadata: {
               path: ['pagarmeOrderCode'],
-              equals: basics.orderCode
-            }
-          }
+              equals: basics.orderCode,
+            },
+          },
         });
       }
       
@@ -258,7 +269,7 @@ export async function POST(req) {
 
       const common = {
         status: mapped,
-        method: basics.method === "PIX" ? "PIX" : (basics.method || "CARD"),
+        method: basics.method === "PIX" ? "PIX" : basics.method || "CARD",
         qrCode: basics.qrText ?? undefined,
         qrCodeUrl: basics.qrUrl ?? undefined,
         raw: evt,
@@ -273,7 +284,10 @@ export async function POST(req) {
       } else {
         // Só cria Charge se tiver Pedido associado
         if (basics.orderCode) {
-          const p = await prisma.pedido.findFirst({ where: { code: basics.orderCode }, select: { id: true } });
+          const p = await prisma.pedido.findFirst({
+            where: { code: basics.orderCode },
+            select: { id: true },
+          });
           if (p) {
             await prisma.charge.create({
               data: {
@@ -293,14 +307,17 @@ export async function POST(req) {
     }
 
     if (mapped === "PAID" && basics.orderCode) {
-      console.log('[webhook] Liberando acesso para:', basics.orderCode);
+      console.log('[webhook] Liberando acesso para orderCode:', basics.orderCode);
       await markPaidAndRelease(basics.orderCode);
-      console.log('[webhook] Acesso liberado com sucesso!');
+      console.log('[webhook] Fluxo de liberação concluído (multi-roteador).');
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[webhook] Erro:', err);
-    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: String(err?.message || err) },
+      { status: 500 },
+    );
   }
 }

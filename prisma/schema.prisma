@@ -98,6 +98,7 @@ model Roteador {
 
   // Relacionamento opcional com Frota (1 roteador -> 1 frota)
   frota    Frota?
+  sessoes  SessaoAtiva[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -111,11 +112,16 @@ model SessaoAtiva {
   inicioEm   DateTime @default(now())
   expiraEm   DateTime
   ativo      Boolean  @default(true)
+
   pedidoId   String?
   pedido     Pedido?  @relation(fields: [pedidoId], references: [id])
 
+  roteadorId String?
+  roteador   Roteador? @relation(fields: [roteadorId], references: [id])
+
   @@index([ativo])
   @@index([pedidoId])
+  @@index([roteadorId])
   @@map("sessoes_ativas")
 }
 
