@@ -13,6 +13,12 @@ function isOnline(status) {
   return ['online', 'on', 'ok', 'up', 'ativo', 'connected'].includes(s);
 }
 
+function extractFrotas(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.frotas)) return data.frotas;
+  return [];
+}
+
 // === Página ===
 export default function FrotasPage() {
   const [frotas, setFrotas] = useState([]);
@@ -25,7 +31,7 @@ export default function FrotasPage() {
         const res = await fetch('/api/frotas');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        setFrotas(Array.isArray(data) ? data : []);
+        setFrotas(extractFrotas(data));
       } catch (error) {
         console.error('Erro ao buscar frotas:', error);
         setFrotas([]);
@@ -45,7 +51,7 @@ export default function FrotasPage() {
         const res = await fetch('/api/frotas', { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        setFrotas(Array.isArray(data) ? data : []);
+        setFrotas(extractFrotas(data));
       } catch (error) {
         console.warn('Erro ao atualizar frotas:', error);
       }
@@ -73,7 +79,10 @@ export default function FrotasPage() {
                 : Number(frota?.valorTotalCentavos ?? 0) / 100;
 
             const acessos = Number(frota?.acessos ?? 0);
-            const online = isOnline(frota?.status);
+            const statusMikrotik = frota?.statusMikrotik ?? frota?.status;
+            const onlineMikrotik = isOnline(statusMikrotik);
+            const statusStarlink = frota?.statusStarlink ?? null;
+            const onlineStarlink = statusStarlink ? isOnline(statusStarlink) : null;
             const ping = frota?.pingMs ?? null;
             const perda = frota?.perdaPct ?? null;
 
@@ -98,11 +107,23 @@ export default function FrotasPage() {
                   <strong>Status Mikrotik:</strong>{' '}
                   <span
                     className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                      online ? 'bg-green-500' : 'bg-red-500'
+                      onlineMikrotik ? 'bg-green-500' : 'bg-red-500'
                     }`}
                   />
-                  {online ? 'online' : 'offline'}
+                  {onlineMikrotik ? 'online' : 'offline'}
                 </div>
+
+                {statusStarlink && (
+                  <div className="mt-1 text-gray-700 dark:text-gray-200">
+                    <strong>Status Starlink:</strong>{' '}
+                    <span
+                      className={`inline-block w-3 h-3 rounded-full mr-2 ${
+                        onlineStarlink ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                    />
+                    {onlineStarlink ? 'online' : 'offline'}
+                  </div>
+                )}
 
                 {ping !== null && (
                   <p className="text-gray-600 dark:text-gray-300 text-sm mt-1">
