@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
+import { syncWireguardPeer } from '@/lib/wireguard';
 
 // Lista roteadores (sem expor senhaHash)
 export async function GET() {
@@ -58,6 +59,22 @@ export async function POST(req) {
 
     const senhaHash = await bcrypt.hash(String(senha).trim(), 10);
 
+    // Tenta sincronizar o peer no WireGuard, se tivermos dados suficientes
+    let statusWireguard = undefined;
+    if (wgPublicKey && wgIp) {
+      try {
+        const sync = await syncWireguardPeer({
+          publicKey: String(wgPublicKey).trim(),
+          allowedIp: String(wgIp).trim(),
+        });
+        if (sync.ok) statusWireguard = 'ONLINE';
+        else if (!sync.skipped) statusWireguard = 'ERRO';
+      } catch (e) {
+        console.error('POST /api/roteadores => erro ao sincronizar WG:', e);
+        statusWireguard = 'ERRO';
+      }
+    }
+
     const created = await prisma.roteador.create({
       data: {
         nome: String(nome).trim(),
@@ -68,6 +85,7 @@ export async function POST(req) {
         portaSsh: portaSsh ? Number(portaSsh) : undefined,
         wgPublicKey: wgPublicKey ? String(wgPublicKey).trim() : null,
         wgIp: wgIp ? String(wgIp).trim() : null,
+        statusWireguard,
       },
       select: {
         id: true,

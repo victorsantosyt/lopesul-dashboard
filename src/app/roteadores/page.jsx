@@ -161,14 +161,22 @@ export default function RoteadoresPage() {
         <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
           Roteadores (Mikrotiks)
         </h1>
-        <button
-          type="button"
-          onClick={atualizarStatus}
-          disabled={statusLoading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow"
-        >
-          {statusLoading ? 'Verificando...' : 'Atualizar status'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={atualizarStatus}
+            disabled={statusLoading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow"
+          >
+            {statusLoading ? 'Verificando...' : 'Atualizar status'}
+          </button>
+          <a
+            href="/roteadores/debug"
+            className="border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium px-3 py-2 rounded-lg shadow-sm"
+          >
+            Debug
+          </a>
+        </div>
       </div>
 
       {/* Formulário simples para cadastrar roteador */}
