@@ -226,17 +226,23 @@ async function markPaidAndRelease(orderCode) {
   }
 
   try {
-    console.log('[webhook] Chamando liberarAcesso com router:', {
+    console.log('[webhook] Chamando liberarAcesso (modo inteligente):', {
       ip,
       mac: deviceMac,
+      pedidoId: pedido.id,
+      deviceId: pedido.deviceId,
+      mikId: routerInfo.device?.mikId,
       routerHost: routerInfo.router.host,
     });
     await liberarAcesso({
       ip,
       mac: deviceMac,
       orderId: orderCode,
+      pedidoId: pedido.id, // Permite modo inteligente
+      deviceId: pedido.deviceId, // Permite modo inteligente
+      mikId: routerInfo.device?.mikId, // Permite modo inteligente
       comment: `Pedido ${orderCode} - ${pedido.id}`,
-      router: routerInfo.router,
+      router: routerInfo.router, // Fallback para modo direto
     });
     console.log('[webhook] liberarAcesso executado com sucesso!');
   } catch (e) {

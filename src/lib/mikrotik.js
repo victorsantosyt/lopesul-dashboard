@@ -91,7 +91,7 @@ export async function listPppActive(router) {
 /** ============================
  * LIBERAR ACESSO (preset completo: paid_clients + bypass + matar sessão)
  * ============================ */
-export async function liberarAcesso({ ip, mac, orderId, comment, router } = {}) {
+export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoId, deviceId, mikId } = {}) {
   // Segurança: não vamos liberar nada sem IP/MAC válidos
   if (!ip || ip === "0.0.0.0") {
     throw new Error(`[MIKROTIK] IP inválido para liberação: ${ip}`);
@@ -100,23 +100,77 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router } = {}) 
     throw new Error("[MIKROTIK] MAC inválido para liberação");
   }
 
-  const finalComment = comment || `paid:${orderId || "sem-order"}`;
+  const finalComment = comment || `paid:${orderId || pedidoId || "sem-order"}`;
 
-  // Usa relay se router estiver configurado, senão tenta API direta
+  const sentences = [
+    `/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${finalComment}"`,
+    `/ip/hotspot/ip-binding/add address=${ip} mac-address=${mac} server=hotspot1 type=bypassed comment="${finalComment}"`,
+    `/ip/hotspot/active/remove [find where address=${ip} or mac-address=${mac}]`,
+    `/ip/firewall/connection/remove [find src-address~"${ip}" or dst-address~"${ip}"]`,
+  ];
+
+  // ===== MODO INTELIGENTE (prioridade) =====
+  // Tenta usar relay inteligente se tiver pedidoId ou deviceId
+  if (pedidoId || deviceId || mikId) {
+    try {
+      const endpoint = pedidoId 
+        ? "/relay/exec-by-pedido"
+        : "/relay/exec-by-device";
+      
+      const body = pedidoId
+        ? { pedidoId, command: "" }
+        : { deviceId, mikId, command: "" };
+
+      console.log("[MIKROTIK] Tentando modo inteligente:", endpoint, { pedidoId, deviceId, mikId });
+
+      // Executa cada comando via modo inteligente
+      for (const cmd of sentences) {
+        try {
+          const response = await relayFetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...body, command: cmd }),
+          });
+
+          const result = await response.json().catch(() => ({}));
+          if (!result.ok) {
+            // Se database_not_available, tenta modo direto
+            if (result.error === 'database_not_available') {
+              console.log("[MIKROTIK] Relay sem DB, usando modo direto");
+              break; // Sai do loop e vai para modo direto
+            }
+            console.warn("[MIKROTIK] Comando falhou via relay inteligente:", cmd, result.error);
+          } else {
+            console.log("[MIKROTIK] Comando executado via relay inteligente:", cmd);
+          }
+        } catch (cmdErr) {
+          // Se erro de conexão, tenta modo direto
+          if (cmdErr.message?.includes('RELAY') || cmdErr.message?.includes('fetch')) {
+            console.log("[MIKROTIK] Relay indisponível, usando modo direto");
+            break;
+          }
+          console.error("[MIKROTIK] Erro ao executar comando via relay inteligente:", cmd, cmdErr.message);
+        }
+      }
+
+      // Se chegou aqui sem quebrar, modo inteligente funcionou
+      console.log("[MIKROTIK] Acesso liberado com sucesso via relay inteligente para", ip, mac, finalComment);
+      return { ok: true, cmds: sentences, via: "relay_inteligente" };
+    } catch (err) {
+      console.warn("[MIKROTIK] Modo inteligente falhou, tentando modo direto:", err.message);
+      // Continua para modo direto
+    }
+  }
+
+  // ===== MODO DIRETO (compatibilidade) =====
+  // Usa relay direto se router estiver configurado
   if (router && router.host) {
     try {
       const cfg = resolveRouterConfig(router);
-      const sentences = [
-        `/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${finalComment}"`,
-        `/ip/hotspot/ip-binding/add address=${ip} mac-address=${mac} server=hotspot1 type=bypassed comment="${finalComment}"`,
-        `/ip/hotspot/active/remove [find where address=${ip} or mac-address=${mac}]`,
-        `/ip/firewall/connection/remove [find src-address~"${ip}" or dst-address~"${ip}"]`,
-      ];
-
-      console.log("[MIKROTIK] Usando relay para liberar acesso:", ip, mac);
+      console.log("[MIKROTIK] Usando relay direto para liberar acesso:", ip, mac);
       
       for (const cmd of sentences) {
-        console.log("[MIKROTIK] Executando via relay:", cmd);
+        console.log("[MIKROTIK] Executando via relay direto:", cmd);
         try {
           const response = await relayFetch("/relay/exec", {
             method: "POST",
@@ -132,17 +186,17 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router } = {}) 
 
           const result = await response.json().catch(() => ({}));
           if (!result.ok) {
-            console.warn("[MIKROTIK] Comando falhou via relay:", cmd, result.error);
+            console.warn("[MIKROTIK] Comando falhou via relay direto:", cmd, result.error);
           }
         } catch (cmdErr) {
-          console.error("[MIKROTIK] Erro ao executar comando via relay:", cmd, cmdErr.message);
+          console.error("[MIKROTIK] Erro ao executar comando via relay direto:", cmd, cmdErr.message);
         }
       }
 
-      console.log("[MIKROTIK] Acesso liberado com sucesso via relay para", ip, mac, finalComment);
-      return { ok: true, cmds: sentences, via: "relay" };
+      console.log("[MIKROTIK] Acesso liberado com sucesso via relay direto para", ip, mac, finalComment);
+      return { ok: true, cmds: sentences, via: "relay_direto" };
     } catch (err) {
-      console.error("[MIKROTIK] Erro ao usar relay, tentando API direta:", err.message);
+      console.error("[MIKROTIK] Erro ao usar relay direto, tentando API direta:", err.message);
       // Fallback para API direta se relay falhar
     }
   }
