@@ -139,16 +139,13 @@
         if (/^\$\(.+\)$/.test(trimmed)) return '';
         return trimmed;
       };
-      const deviceId = sanitizeId(
+      let deviceId = sanitizeId(
         get("deviceId") || get("device") || get("dispositivoId") || ""
       );
-      const mikId = sanitizeId(get("mikId") || get("mikID") || "");
-      const deviceIdentifier = deviceId || mikId || null;
-      if (!deviceIdentifier) {
-        console.warn('[Portal] Sem identificador do dispositivo (deviceId/mikId). Fluxo Pix será bloqueado.');
-      }
+      let mikId = sanitizeId(get("mikId") || get("mikID") || "");
+      let deviceIdentifier = deviceId || mikId || null;
       
-      // Detecta IP e MAC automaticamente via API
+      // Detecta IP, MAC e dispositivo automaticamente via API
       (async () => {
         try {
           const res = await fetch('/api/detect-client');
@@ -157,6 +154,14 @@
           if (!ip && data.ip) {
             ip = data.ip;
             console.log('[Portal] IP detectado:', ip);
+          }
+          
+          // Se não tem deviceIdentifier na URL, tenta usar o detectado pela API
+          if (!deviceIdentifier && data.deviceIdentifier) {
+            deviceId = data.deviceId || null;
+            mikId = data.mikId || null;
+            deviceIdentifier = data.deviceIdentifier;
+            console.log('[Portal] Dispositivo detectado automaticamente:', { deviceId, mikId, deviceIdentifier });
           }
           
           // Tenta buscar MAC via ARP do Mikrotik (se IP está disponível)
@@ -180,6 +185,10 @@
           console.error('[Portal] Erro ao detectar cliente:', e);
         }
       })();
+      
+      if (!deviceIdentifier) {
+        console.warn('[Portal] Sem identificador do dispositivo (deviceId/mikId). Aguardando detecção automática...');
+      }
 
       let nomeCli = get("nome") || get("name") || "Cliente";
       let docCli  = get("doc")  || get("document") || "";
@@ -299,6 +308,23 @@
           s.className = 'pill err';
           s.textContent = msg;
         };
+
+        // Se não tem deviceIdentifier, tenta detectar automaticamente
+        if (!deviceIdentifier) {
+          try {
+            const res = await fetch('/api/detect-client');
+            const data = await res.json();
+            
+            if (data.deviceIdentifier) {
+              deviceId = data.deviceId || null;
+              mikId = data.mikId || null;
+              deviceIdentifier = data.deviceIdentifier;
+              console.log('[Portal] Dispositivo detectado na hora do checkout:', { deviceId, mikId, deviceIdentifier });
+            }
+          } catch (e) {
+            console.error('[Portal] Erro ao detectar dispositivo:', e);
+          }
+        }
 
         if (!deviceIdentifier) {
           setErro('Dispositivo não identificado. Atualize a página ou tente novamente no Wi-Fi do ônibus.');
