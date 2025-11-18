@@ -38,6 +38,9 @@ const PUBLIC_APIS = [
   '/api/mikrotik/upload-redirect',
   '/api/mikrotik/arp',
 
+  // detecção de cliente (para captive portal)
+  '/api/detect-client',
+
   // auth/config leves
   '/api/auth/session-preference',
   '/api/configuracoes',
