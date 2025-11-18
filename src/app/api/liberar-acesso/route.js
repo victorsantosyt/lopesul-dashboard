@@ -36,7 +36,6 @@ const IPV4_RE =
 function normMac(s) {
   if (!s) return null;
   const up = String(s).trim().toUpperCase();
-  // aceita com : ou -; normaliza para :
   const mac = up.replace(/-/g, ':');
   return MAC_RE.test(mac) ? mac : null;
 }
@@ -62,7 +61,7 @@ export async function POST(req) {
     if (!externalId && !pagamentoId && !txid) {
       return json(
         { ok: false, error: 'Informe externalId (code), pagamentoId ou txid.' },
-        400
+        400,
       );
     }
 
@@ -112,8 +111,20 @@ export async function POST(req) {
     }
 
     // ============ decidir IP/MAC e validar ============
-    const ipFinal  = normIp(ip || pedido.ip || null);
+    const ipFinal = normIp(ip || pedido.ip || null);
     const macFinal = normMac(mac || pedido.deviceMac || null);
+
+    if (!ipFinal && !macFinal) {
+      return json(
+        {
+          ok: false,
+          error: 'Sem IP/MAC válidos (nem no payload, nem no Pedido).',
+          pedidoId: pedido.id,
+          code: pedido.code,
+        },
+        400,
+      );
+    }
 
     const deviceLookup = {
       deviceId: bodyDeviceId || pedido.deviceId,
@@ -137,9 +148,16 @@ export async function POST(req) {
     // comentário curto e rastreável
     const comment = `pedido:${pedido.id}`.slice(0, 64);
 
-    // ============ liberação no MikroTik ============
-    let mk = { ok: true, note: 'sem ip/mac válidos; apenas status atualizado' };
+    console.log('[liberar-acesso] Liberando acesso via device-router', {
+      pedidoId: pedido.id,
+      code: pedido.code,
+      ip: ipFinal,
+      mac: macFinal,
+      deviceId: pedido.deviceId,
+      routerHost: routerInfo.router.host,
+    });
 
+    let mk;
     if (ipFinal || macFinal) {
       try {
         mk = await liberarAcesso({
@@ -161,19 +179,21 @@ export async function POST(req) {
           502
         );
       }
+    } else {
+      mk = { ok: true, note: 'sem ip/mac válidos; apenas status atualizado' };
     }
 
     return json(
       {
-        ok: true,
+        ok: mk.ok,
         pedidoId: pedido.id,
         code: pedido.code,
-        status: pedido.status, // esperado: PAID
+        status: pedido.status,
         mikrotik: mk,
         redirect: linkOrig || null,
       },
       200,
-      { 'Cache-Control': 'no-store' }
+      { 'Cache-Control': 'no-store' },
     );
   } catch (e) {
     console.error('POST /api/liberar-acesso error:', e);

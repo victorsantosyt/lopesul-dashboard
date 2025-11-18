@@ -45,7 +45,7 @@ function verifyPagarmeSignature(rawBody, signatureHeader) {
     console.log('[webhook] Assinatura inválida mas aceitando mesmo assim');
     console.log('[webhook] Expected:', expected);
     console.log('[webhook] Got:', provided);
-    // Aceita mesmo com assinatura inválida em produção
+    // Aceita mesmo com assinatura inválida em produção (modo permissivo)
     return true;
   }
   
@@ -116,7 +116,7 @@ function extractBasics(evt) {
   };
 }
 
-/** Marca pedido como pago e libera no Mikrotik */
+/** Marca pedido como pago e libera no Mikrotik correto (multi-roteador) */
 async function markPaidAndRelease(orderCode) {
   // Tenta buscar pelo campo 'code' (que armazena o 'id' or_xxx)
   let pedido = await prisma.pedido.findFirst({
@@ -131,8 +131,8 @@ async function markPaidAndRelease(orderCode) {
       where: {
         metadata: {
           path: ['pagarmeOrderCode'],
-          equals: orderCode
-        }
+          equals: orderCode,
+        },
       },
       include: { device: true },
     });
@@ -155,8 +155,9 @@ async function markPaidAndRelease(orderCode) {
     deviceMikId: pedido.device?.mikId,
   });
 
+  // Garante status PAID (idempotente); o handler principal já faz isso também
   if (pedido.status !== "PAID") {
-    await prisma.pedido.update({
+    pedido = await prisma.pedido.update({
       where: { id: pedido.id },
       data: { status: "PAID" },
     });
@@ -289,7 +290,7 @@ export async function POST(req) {
     if (basics.orderCode) {
       // Tenta buscar pelo campo 'code' primeiro
       let pedidoExistente = await prisma.pedido.findFirst({
-        where: { code: basics.orderCode }
+        where: { code: basics.orderCode },
       });
       
       // Se não encontrou, tenta buscar pelo 'code' armazenado no metadata
@@ -298,9 +299,9 @@ export async function POST(req) {
           where: {
             metadata: {
               path: ['pagarmeOrderCode'],
-              equals: basics.orderCode
-            }
-          }
+              equals: basics.orderCode,
+            },
+          },
         });
       }
       
@@ -323,7 +324,7 @@ export async function POST(req) {
 
       const common = {
         status: mapped,
-        method: basics.method === "PIX" ? "PIX" : (basics.method || "CARD"),
+        method: basics.method === "PIX" ? "PIX" : basics.method || "CARD",
         qrCode: basics.qrText ?? undefined,
         qrCodeUrl: basics.qrUrl ?? undefined,
         raw: evt,
@@ -338,7 +339,10 @@ export async function POST(req) {
       } else {
         // Só cria Charge se tiver Pedido associado
         if (basics.orderCode) {
-          const p = await prisma.pedido.findFirst({ where: { code: basics.orderCode }, select: { id: true } });
+          const p = await prisma.pedido.findFirst({
+            where: { code: basics.orderCode },
+            select: { id: true },
+          });
           if (p) {
             await prisma.charge.create({
               data: {
@@ -371,6 +375,9 @@ export async function POST(req) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[webhook] Erro:', err);
-    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: String(err?.message || err) },
+      { status: 500 },
+    );
   }
 }

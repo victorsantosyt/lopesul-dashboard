@@ -22,6 +22,9 @@ export async function GET(_req, { params }) {
       include: {
         _count: { select: { dispositivos: true, vendas: true } },
         dispositivos: true,
+        roteador: {
+          select: { id: true, nome: true, ipLan: true },
+        },
       },
     });
     if (!frota) return NextResponse.json({ error: 'Frota não encontrada' }, { status: 404 });
@@ -71,6 +74,12 @@ export async function GET(_req, { params }) {
       {
         id: frota.id,
         nome: frota.nome ?? `Frota ${frota.id.slice(0, 4)}`,
+        placa: frota.placa,
+        rotaLinha: frota.rotaLinha,
+        statusFrota: frota.status,
+        observacoes: frota.observacoes,
+        roteadorId: frota.roteadorId,
+        roteador: frota.roteador,
         criadoEm: frota.criadoEm,
         acessos: Number(frota._count?.dispositivos ?? 0),
         status,
@@ -88,6 +97,60 @@ export async function GET(_req, { params }) {
   } catch (error) {
     console.error('GET /api/frotas/[id]', error);
     return NextResponse.json({ error: 'Erro interno no servidor' }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/frotas/[id]
+ * Atualiza dados da frota (incluindo vínculo com Roteador).
+ */
+export async function PUT(req, { params }) {
+  try {
+    const id = String(params?.id || '').trim();
+    if (!id) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+
+    const body = await req.json().catch(() => ({}));
+    const {
+      nome,
+      placa,
+      rotaLinha,
+      status,
+      observacoes,
+      roteadorId,
+    } = body || {};
+
+    const data = {};
+    if (nome !== undefined) data.nome = nome ? String(nome).trim() : null;
+    if (placa !== undefined) data.placa = placa ? String(placa).trim() : null;
+    if (rotaLinha !== undefined) data.rotaLinha = rotaLinha ? String(rotaLinha).trim() : null;
+    if (status !== undefined) data.status = status;
+    if (observacoes !== undefined) data.observacoes = observacoes ? String(observacoes).trim() : null;
+    if (roteadorId !== undefined) data.roteadorId = roteadorId ? String(roteadorId).trim() : null;
+
+    const updated = await prisma.frota.update({
+      where: { id },
+      data,
+      include: {
+        roteador: { select: { id: true, nome: true, ipLan: true } },
+      },
+    });
+
+    return NextResponse.json(
+      {
+        id: updated.id,
+        nome: updated.nome,
+        placa: updated.placa,
+        rotaLinha: updated.rotaLinha,
+        statusFrota: updated.status,
+        observacoes: updated.observacoes,
+        roteadorId: updated.roteadorId,
+        roteador: updated.roteador,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('PUT /api/frotas/[id]', error);
+    return NextResponse.json({ error: 'Erro ao atualizar frota' }, { status: 500 });
   }
 }
 
