@@ -32,24 +32,51 @@ function buildError(code: string, message: string, extra: Record<string, unknown
 }
 
 export async function findDeviceRecord({ deviceId, mikId, ip }: DeviceLookup = {}) {
+  console.log('[device-router] Buscando dispositivo:', { deviceId, mikId, ip });
+  
   const id = normalizeString(deviceId);
   if (id) {
-    const byId = await prisma.dispositivo.findUnique({ where: { id } }).catch(() => null);
-    if (byId) return byId;
+    console.log('[device-router] Buscando por id:', id);
+    const byId = await prisma.dispositivo.findUnique({ where: { id } }).catch((err) => {
+      console.error('[device-router] Erro ao buscar por id:', err);
+      return null;
+    });
+    if (byId) {
+      console.log('[device-router] Dispositivo encontrado por id:', byId.id);
+      return byId;
+    }
+    console.log('[device-router] Dispositivo não encontrado por id');
   }
 
   const mik = normalizeString(mikId);
   if (mik) {
-    const byMik = await prisma.dispositivo.findUnique({ where: { mikId: mik } }).catch(() => null);
-    if (byMik) return byMik;
+    console.log('[device-router] Buscando por mikId:', mik);
+    const byMik = await prisma.dispositivo.findUnique({ where: { mikId: mik } }).catch((err) => {
+      console.error('[device-router] Erro ao buscar por mikId:', err);
+      return null;
+    });
+    if (byMik) {
+      console.log('[device-router] Dispositivo encontrado por mikId:', byMik.id);
+      return byMik;
+    }
+    console.log('[device-router] Dispositivo não encontrado por mikId');
   }
 
   const deviceIp = normalizeString(ip);
   if (deviceIp) {
-    const byIp = await prisma.dispositivo.findFirst({ where: { ip: deviceIp } }).catch(() => null);
-    if (byIp) return byIp;
+    console.log('[device-router] Buscando por ip:', deviceIp);
+    const byIp = await prisma.dispositivo.findFirst({ where: { ip: deviceIp } }).catch((err) => {
+      console.error('[device-router] Erro ao buscar por ip:', err);
+      return null;
+    });
+    if (byIp) {
+      console.log('[device-router] Dispositivo encontrado por ip:', byIp.id);
+      return byIp;
+    }
+    console.log('[device-router] Dispositivo não encontrado por ip');
   }
 
+  console.log('[device-router] Nenhum dispositivo encontrado');
   return null;
 }
 

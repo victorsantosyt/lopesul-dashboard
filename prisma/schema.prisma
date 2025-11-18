@@ -51,6 +51,7 @@ model Dispositivo {
   mikrotikPass String?
   mikrotikPort Int      @default(8728)
   mikrotikUseSsl Boolean @default(false)
+  pedidos      Pedido[]
 
   @@unique([frotaId, ip])
   @@index([ip])
@@ -67,7 +68,6 @@ model SessaoAtiva {
   pedidoId   String?
   pedido     Pedido?  @relation(fields: [pedidoId], references: [id])
   roteadorId String?
-  roteador   Roteador? @relation(fields: [roteadorId], references: [id], onDelete: SetNull)
 
   @@index([ativo])
   @@index([pedidoId])

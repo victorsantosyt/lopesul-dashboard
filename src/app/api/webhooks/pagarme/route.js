@@ -188,6 +188,12 @@ async function markPaidAndRelease(orderCode) {
       deviceId: pedido.deviceId,
       mikId: pedido.device?.mikId || pedido.deviceIdentifier,
     });
+    console.log('[webhook] Router info obtido:', {
+      host: routerInfo.router?.host,
+      user: routerInfo.router?.user,
+      port: routerInfo.router?.port,
+      hasHost: !!routerInfo.router?.host,
+    });
   } catch (err) {
     console.error('[webhook] Dispositivo não encontrado ou sem credenciais:', err.code || err.message, {
       orderCode,
@@ -197,7 +203,17 @@ async function markPaidAndRelease(orderCode) {
     return;
   }
 
+  if (!routerInfo || !routerInfo.router || !routerInfo.router.host) {
+    console.error('[webhook] Router inválido ou sem host:', routerInfo);
+    return;
+  }
+
   try {
+    console.log('[webhook] Chamando liberarAcesso com router:', {
+      ip,
+      mac: deviceMac,
+      routerHost: routerInfo.router.host,
+    });
     await liberarAcesso({
       ip,
       mac: deviceMac,
@@ -205,9 +221,11 @@ async function markPaidAndRelease(orderCode) {
       comment: `Pedido ${orderCode} - ${pedido.id}`,
       router: routerInfo.router,
     });
-    console.log('[webhook] Acesso liberado com sucesso!');
+    console.log('[webhook] liberarAcesso executado com sucesso!');
   } catch (e) {
     console.error('[webhook] Erro ao liberar acesso:', e);
+    console.error('[webhook] Stack:', e.stack);
+    throw e; // Re-lança para que o caller saiba que falhou
   }
 }
 
@@ -325,8 +343,13 @@ export async function POST(req) {
 
     if (mapped === "PAID" && basics.orderCode) {
       console.log('[webhook] Liberando acesso para:', basics.orderCode);
-      await markPaidAndRelease(basics.orderCode);
-      console.log('[webhook] Acesso liberado com sucesso!');
+      try {
+        await markPaidAndRelease(basics.orderCode);
+        console.log('[webhook] Fluxo de liberação concluído (multi-roteador).');
+      } catch (releaseErr) {
+        console.error('[webhook] Erro ao liberar acesso no webhook:', releaseErr);
+        // Não falha o webhook inteiro, apenas loga o erro
+      }
     }
 
     return NextResponse.json({ ok: true });
