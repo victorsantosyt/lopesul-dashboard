@@ -245,6 +245,50 @@ async function markPaidAndRelease(orderCode) {
       router: routerInfo.router, // Fallback para modo direto
     });
     console.log('[webhook] liberarAcesso executado com sucesso!');
+
+    // Criar sessão ativa após liberar acesso com sucesso
+    try {
+      // Buscar roteador pelo host/user se disponível
+      let roteadorId = null;
+      if (routerInfo.router?.host) {
+        const roteador = await prisma.roteador.findFirst({
+          where: {
+            ipLan: routerInfo.router.host,
+            usuario: routerInfo.router.user,
+          },
+        });
+        if (roteador) {
+          roteadorId = roteador.id;
+        }
+      }
+
+      // Calcular expiração (120 minutos padrão)
+      const minutos = 120;
+      const now = new Date();
+      const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
+
+      const sessao = await prisma.sessaoAtiva.create({
+        data: {
+          ipCliente: ip || `sem-ip-${pedido.id}`.slice(0, 255),
+          macCliente: deviceMac || null,
+          plano: pedido.description || 'Acesso',
+          inicioEm: now,
+          expiraEm,
+          ativo: true,
+          pedidoId: pedido.id,
+          roteadorId,
+        },
+      });
+
+      console.log('[webhook] Sessão ativa criada:', {
+        sessaoId: sessao.id,
+        ipCliente: sessao.ipCliente,
+        roteadorId: sessao.roteadorId,
+      });
+    } catch (sessaoErr) {
+      console.error('[webhook] Erro ao criar sessão ativa (não crítico):', sessaoErr);
+      // Não falha o webhook inteiro se não conseguir criar sessão
+    }
   } catch (e) {
     console.error('[webhook] Erro ao liberar acesso:', e);
     console.error('[webhook] Stack:', e.stack);
