@@ -144,11 +144,15 @@ async function markPaidAndRelease(orderCode) {
   }
 
   console.log('[webhook] Pedido encontrado:', {
+    id: pedido.id,
+    code: pedido.code,
     ip: pedido.ip,
     mac: pedido.deviceMac,
     status: pedido.status,
     deviceId: pedido.deviceId,
     deviceIdentifier: pedido.deviceIdentifier,
+    hasDevice: !!pedido.device,
+    deviceMikId: pedido.device?.mikId,
   });
 
   if (pedido.status !== "PAID") {
@@ -175,6 +179,9 @@ async function markPaidAndRelease(orderCode) {
     ip,
     mac: deviceMac,
     deviceId: pedido.deviceId,
+    deviceIdentifier: pedido.deviceIdentifier,
+    hasDevice: !!pedido.device,
+    deviceMikId: pedido.device?.mikId,
   });
   
   if (!ip && !deviceMac) {
@@ -182,11 +189,20 @@ async function markPaidAndRelease(orderCode) {
     return;
   }
   
+  // Tenta usar deviceId primeiro, depois deviceIdentifier como mikId
+  const lookupDeviceId = pedido.deviceId;
+  const lookupMikId = pedido.device?.mikId || pedido.deviceIdentifier;
+  
+  console.log('[webhook] Buscando dispositivo com:', {
+    deviceId: lookupDeviceId,
+    mikId: lookupMikId,
+  });
+  
   let routerInfo = null;
   try {
     routerInfo = await requireDeviceRouter({
-      deviceId: pedido.deviceId,
-      mikId: pedido.device?.mikId || pedido.deviceIdentifier,
+      deviceId: lookupDeviceId,
+      mikId: lookupMikId,
     });
     console.log('[webhook] Router info obtido:', {
       host: routerInfo.router?.host,
