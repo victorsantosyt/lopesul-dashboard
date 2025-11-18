@@ -123,8 +123,6 @@ model SessaoAtiva {
   pedidoId   String?
   pedido     Pedido?  @relation(fields: [pedidoId], references: [id])
   roteadorId String?
-
-  roteadorId String?
   roteador   Roteador? @relation(fields: [roteadorId], references: [id])
 
   @@index([ativo])
