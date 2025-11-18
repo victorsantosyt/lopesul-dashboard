@@ -2,6 +2,7 @@
 // Implementação em JavaScript da rota /api/command/exec (sem TypeScript).
 
 import { relayFetch } from "@/lib/relay";
+import { requireDeviceRouter } from "@/lib/device-router";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,23 +28,37 @@ export async function POST(req) {
     return corsJson({ ok: false, error: "missing command" }, 400);
   }
 
-  // Lê somente do env do servidor (não expõe ao client)
-  const env = (typeof globalThis !== "undefined" && globalThis.process && globalThis.process.env)
-    ? globalThis.process.env
-    : (typeof process !== "undefined" ? process.env || {} : {});
-  const host = String(env.MIKROTIK_HOST || "");
-  const user = String(env.MIKROTIK_USER || "");
-  const pass = String(env.MIKROTIK_PASS || "");
+  const asString = (value) => {
+    if (typeof value === "string") return value;
+    if (value == null) return null;
+    return String(value);
+  };
+  const deviceInput = {
+    deviceId: asString(body?.deviceId ?? body?.dispositivoId),
+    mikId: asString(body?.mikId ?? body?.routerId),
+  };
 
-  if (!host || !user || !pass) {
-    return corsJson({ ok: false, error: "mikrotik env missing" }, 500);
+  let routerInfo;
+  try {
+    routerInfo = await requireDeviceRouter(deviceInput);
+  } catch (err) {
+    return corsJson(
+      { ok: false, error: err?.code || "device_not_found", detail: err?.message },
+      err?.code === "device_not_found" ? 404 : 400
+    );
   }
 
   try {
     const r = await relayFetch("/relay/exec", {
       method: "POST",
       headers: { "Content-Type": "application/json" }, // Authorization vem do relayFetch
-      body: JSON.stringify({ host, user, pass, command }),
+      body: JSON.stringify({
+        host: routerInfo.router.host,
+        user: routerInfo.router.user,
+        pass: routerInfo.router.pass,
+        port: routerInfo.router.port,
+        command,
+      }),
     });
 
     // Tenta JSON, se falhar, captura texto bruto

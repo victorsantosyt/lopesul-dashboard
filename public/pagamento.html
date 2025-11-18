@@ -132,6 +132,21 @@
       let mac = get("mac") || null;
       let ip = get("ip") || null;
       const linkOrig = get("link_orig") || get("link-orig") || "";
+      const normalize = (value) => (typeof value === 'string' ? value.trim() : '');
+      const sanitizeId = (value) => {
+        const trimmed = normalize(value);
+        if (!trimmed) return '';
+        if (/^\$\(.+\)$/.test(trimmed)) return '';
+        return trimmed;
+      };
+      const deviceId = sanitizeId(
+        get("deviceId") || get("device") || get("dispositivoId") || ""
+      );
+      const mikId = sanitizeId(get("mikId") || get("mikID") || "");
+      const deviceIdentifier = deviceId || mikId || null;
+      if (!deviceIdentifier) {
+        console.warn('[Portal] Sem identificador do dispositivo (deviceId/mikId). Fluxo Pix será bloqueado.');
+      }
       
       // Detecta IP e MAC automaticamente via API
       (async () => {
@@ -145,9 +160,12 @@
           }
           
           // Tenta buscar MAC via ARP do Mikrotik (se IP está disponível)
-          if (ip && !mac) {
+          if (ip && !mac && deviceIdentifier) {
             try {
-              const arpRes = await fetch(`/api/mikrotik/arp?ip=${ip}`);
+              const params = new URLSearchParams({ ip });
+              if (deviceId) params.set('deviceId', deviceId);
+              else if (mikId) params.set('mikId', mikId);
+              const arpRes = await fetch(`/api/mikrotik/arp?${params.toString()}`);
               const arpData = await arpRes.json();
               if (arpData.mac) {
                 mac = arpData.mac;
@@ -234,7 +252,11 @@
             const r = await fetch(`${API}/api/verificar-pagamento`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ externalId: REF })
+              body: JSON.stringify({
+                externalId: REF,
+                deviceId: deviceId || null,
+                mikId: mikId || null
+              })
             });
             if (!r.ok) return;
             const j = await r.json();
@@ -277,6 +299,11 @@
           s.className = 'pill err';
           s.textContent = msg;
         };
+
+        if (!deviceIdentifier) {
+          setErro('Dispositivo não identificado. Atualize a página ou tente novamente no Wi-Fi do ônibus.');
+          return;
+        }
 
         if (!onlyDigits(docCli)) {
           elClienteForm.style.display = 'block';
@@ -332,6 +359,8 @@
               descricao,
               clienteIp: ip,
               clienteMac: mac,
+              deviceId: deviceId || null,
+              mikId: mikId || null,
               customer: { name: nomeCli, document: docCli }
             })
           });
@@ -374,7 +403,11 @@
           const r = await fetch(`${API}/api/verificar-pagamento`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ externalId: REF })
+            body: JSON.stringify({
+              externalId: REF,
+              deviceId: deviceId || null,
+              mikId: mikId || null
+            })
           });
           
           if (!r.ok) {
@@ -393,13 +426,6 @@
             s.className = 'pill ok';
             s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
             btn.textContent = '✅ Pago';
-            try {
-              await fetch(`${API}/api/liberar-acesso`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ externalId: REF, mac, ip, linkOrig })
-              });
-            } catch {}
             setTimeout(() => {
               try {
                 const fallback = 'http://clients3.google.com/generate_204';

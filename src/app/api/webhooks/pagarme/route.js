@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { liberarAcesso } from "@/lib/mikrotik";
+import { requireDeviceRouter } from "@/lib/device-router";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,7 +119,10 @@ function extractBasics(evt) {
 /** Marca pedido como pago e libera no Mikrotik */
 async function markPaidAndRelease(orderCode) {
   // Tenta buscar pelo campo 'code' (que armazena o 'id' or_xxx)
-  let pedido = await prisma.pedido.findFirst({ where: { code: orderCode } });
+  let pedido = await prisma.pedido.findFirst({
+    where: { code: orderCode },
+    include: { device: true },
+  });
   
   // Se não encontrou, tenta buscar pelo 'code' armazenado no metadata
   if (!pedido) {
@@ -129,7 +133,8 @@ async function markPaidAndRelease(orderCode) {
           path: ['pagarmeOrderCode'],
           equals: orderCode
         }
-      }
+      },
+      include: { device: true },
     });
   }
   
@@ -138,7 +143,13 @@ async function markPaidAndRelease(orderCode) {
     return;
   }
 
-  console.log('[webhook] Pedido encontrado:', { ip: pedido.ip, mac: pedido.deviceMac, status: pedido.status });
+  console.log('[webhook] Pedido encontrado:', {
+    ip: pedido.ip,
+    mac: pedido.deviceMac,
+    status: pedido.status,
+    deviceId: pedido.deviceId,
+    deviceIdentifier: pedido.deviceIdentifier,
+  });
 
   if (pedido.status !== "PAID") {
     await prisma.pedido.update({
@@ -160,19 +171,39 @@ async function markPaidAndRelease(orderCode) {
     console.log('[webhook] Pulando busca automática por enquanto');
   }
 
-  console.log('[webhook] Chamando liberarClienteNoMikrotik:', { ip, mac: deviceMac });
+  console.log('[webhook] Preparando liberação no Mikrotik:', {
+    ip,
+    mac: deviceMac,
+    deviceId: pedido.deviceId,
+  });
   
   if (!ip && !deviceMac) {
     console.log('[webhook] ERRO: IP e MAC ausentes mesmo após busca no MikroTik!');
     return;
   }
   
+  let routerInfo = null;
+  try {
+    routerInfo = await requireDeviceRouter({
+      deviceId: pedido.deviceId,
+      mikId: pedido.device?.mikId || pedido.deviceIdentifier,
+    });
+  } catch (err) {
+    console.error('[webhook] Dispositivo não encontrado ou sem credenciais:', err.code || err.message, {
+      orderCode,
+      deviceId: pedido.deviceId,
+      deviceIdentifier: pedido.deviceIdentifier,
+    });
+    return;
+  }
+
   try {
     await liberarAcesso({
       ip,
       mac: deviceMac,
-      username: `user_${pedido.id}`,
+      orderId: orderCode,
       comment: `Pedido ${orderCode} - ${pedido.id}`,
+      router: routerInfo.router,
     });
     console.log('[webhook] Acesso liberado com sucesso!');
   } catch (e) {

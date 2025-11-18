@@ -1,5 +1,6 @@
 // app/api/relay/exec/route.js
 import { relayFetch } from "@/lib/relay";
+import { requireDeviceRouter } from "@/lib/device-router";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,22 +21,41 @@ export async function POST(req) {
   const body = await req.json().catch(() => ({}));
   const command = String(body?.command || "").trim();
 
-  const host = process.env.MIKROTIK_HOST || "";
-  const user = process.env.MIKROTIK_USER || "";
-  const pass = process.env.MIKROTIK_PASS || "";
-
   if (!command) {
     return corsJson({ ok: false, error: "missing command" }, 400);
   }
-  if (!host || !user || !pass) {
-    return corsJson({ ok: false, error: "mikrotik env missing" }, 500);
+
+  const asString = (value) => {
+    if (typeof value === "string") return value;
+    if (value == null) return null;
+    return String(value);
+  };
+  const deviceInput = {
+    deviceId: asString(body?.deviceId ?? body?.dispositivoId),
+    mikId: asString(body?.mikId ?? body?.routerId),
+  };
+
+  let routerInfo;
+  try {
+    routerInfo = await requireDeviceRouter(deviceInput);
+  } catch (err) {
+    return corsJson(
+      { ok: false, error: err?.code || "device_not_found", detail: err?.message },
+      err?.code === "device_not_found" ? 404 : 400
+    );
   }
 
   try {
     const r = await relayFetch("/relay/exec", {
       method: "POST",
       headers: { "Content-Type": "application/json" }, // importante
-      body: JSON.stringify({ host, user, pass, command }),
+      body: JSON.stringify({
+        host: routerInfo.router.host,
+        user: routerInfo.router.user,
+        pass: routerInfo.router.pass,
+        port: routerInfo.router.port,
+        command,
+      }),
     });
 
     const j = await r.json().catch(() => ({}));

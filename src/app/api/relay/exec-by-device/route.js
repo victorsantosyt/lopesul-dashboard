@@ -1,11 +1,9 @@
-// app/api/relay/exec/route.ts
 import { relayFetch } from '@/lib/relay';
 import { requireDeviceRouter } from '@/lib/device-router';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// CORS (preflight)
 export async function OPTIONS() {
   return new Response(null, {
     status: 204,
@@ -17,56 +15,64 @@ export async function OPTIONS() {
   });
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({} as any));
-  const command = String(body?.command || '').trim();
+export async function POST(req) {
+  const body = await req.json().catch(() => ({}));
+  const command = typeof body?.command === 'string' ? body.command.trim() : '';
+  const sentences = Array.isArray(body?.sentences) ? body.sentences : null;
 
-  if (!command) {
+  if (!command && (!sentences || sentences.length === 0)) {
     return corsJson({ ok: false, error: 'missing command' }, 400);
   }
 
-  const asString = (value: any) => {
+  const asString = (value) => {
     if (typeof value === 'string') return value;
     if (value == null) return null;
     return String(value);
   };
-  const deviceInput = {
-    deviceId: asString(body?.deviceId ?? body?.dispositivoId),
-    mikId: asString(body?.mikId ?? body?.routerId),
-  };
 
   let routerInfo;
   try {
-    routerInfo = await requireDeviceRouter(deviceInput);
-  } catch (err: any) {
+    routerInfo = await requireDeviceRouter({
+      deviceId: asString(body?.deviceId),
+      mikId: asString(body?.mikId),
+    });
+  } catch (err) {
     return corsJson(
       { ok: false, error: err?.code || 'device_not_found', detail: err?.message },
       err?.code === 'device_not_found' ? 404 : 400,
     );
   }
 
+  const payload = {
+    host: routerInfo.router.host,
+    user: routerInfo.router.user,
+    pass: routerInfo.router.pass,
+    port: routerInfo.router.port,
+  };
+
+  if (sentences && sentences.length) {
+    payload.sentences = sentences;
+  } else {
+    payload.command = command;
+  }
+
   try {
     const r = await relayFetch('/relay/exec', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, // importante
-      body: JSON.stringify({
-        host: routerInfo.router.host,
-        user: routerInfo.router.user,
-        pass: routerInfo.router.pass,
-        port: routerInfo.router.port,
-        command,
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-
     const j = await r.json().catch(() => ({}));
     return corsJson(j, r.status);
-  } catch {
-    return corsJson({ ok: false, error: 'relay_unreachable' }, 502);
+  } catch (err) {
+    return corsJson(
+      { ok: false, error: 'relay_unreachable', detail: err?.message || String(err) },
+      502,
+    );
   }
 }
 
-/** Helper p/ JSON + CORS */
-function corsJson(payload: any, status = 200) {
+function corsJson(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -75,3 +81,4 @@ function corsJson(payload: any, status = 200) {
     },
   });
 }
+

@@ -42,6 +42,27 @@ export async function POST(req) {
       document,
     };
 
+    const sanitizeId = (value) => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      if (!trimmed || /^\$\(.+\)$/.test(trimmed)) return null;
+      return trimmed;
+    };
+    const deviceId = sanitizeId(body?.deviceId) ||
+      sanitizeId(body?.dispositivoId) ||
+      sanitizeId(body?.device);
+    const mikId = sanitizeId(body?.mikId) ||
+      sanitizeId(body?.mikID) ||
+      sanitizeId(body?.mikrotikId) ||
+      sanitizeId(body?.routerId);
+
+    if (!deviceId && !mikId) {
+      return NextResponse.json(
+        { error: "deviceId ou mikId são obrigatórios para identificar o Mikrotik." },
+        { status: 400 }
+      );
+    }
+
     // --- idempotency ---
     const orderId = body?.orderId || body?.externalId || randomUUID();
 
@@ -83,21 +104,31 @@ export async function POST(req) {
       expires_in: expiresIn,
       clienteIp,
       deviceMac: body?.clienteMac && body?.clienteMac !== '$(mac)' ? body?.clienteMac : null,
-      metadata: { origem: "checkout-endpoint", ...(body?.metadata || {}) },
+      deviceId,
+      mikId,
+      metadata: {
+        origem: "checkout-endpoint",
+        deviceId,
+        mikId,
+        ...(body?.metadata || {}),
+      },
       orderId,
     };
     
     // Descobrir MAC automaticamente se temos IP mas não temos MAC
     let deviceMac = pixPayload.deviceMac;
-    if (!deviceMac && clienteIp) {
+    if (!deviceMac && clienteIp && (deviceId || mikId)) {
       try {
         console.log('[CHECKOUT] Tentando descobrir MAC via IP (API interna):', clienteIp);
 
         // Usa o endpoint interno que já fala com o Relay e parseia a ARP table
-        const arpRes = await fetch(
-          `${baseUrl}/api/mikrotik/arp?ip=${encodeURIComponent(clienteIp)}`,
-          { cache: 'no-store' }
-        ).catch(() => null);
+        const params = new URLSearchParams({ ip: clienteIp });
+        if (deviceId) params.set('deviceId', deviceId);
+        else if (mikId) params.set('mikId', mikId);
+
+        const arpRes = await fetch(`${baseUrl}/api/mikrotik/arp?${params.toString()}`, {
+          cache: 'no-store',
+        }).catch(() => null);
 
         if (arpRes?.ok) {
           const data = await arpRes.json().catch(() => ({}));

@@ -45,6 +45,12 @@ model Dispositivo {
   atualizadoEm DateTime @updatedAt
   ip           String   @db.Inet
   frota        Frota    @relation(fields: [frotaId], references: [id], onDelete: Cascade)
+  mikId        String?  @unique
+  mikrotikHost String?
+  mikrotikUser String?
+  mikrotikPass String?
+  mikrotikPort Int      @default(8728)
+  mikrotikUseSsl Boolean @default(false)
 
   @@unique([frotaId, ip])
   @@index([ip])
@@ -60,9 +66,12 @@ model SessaoAtiva {
   ativo      Boolean  @default(true)
   pedidoId   String?
   pedido     Pedido?  @relation(fields: [pedidoId], references: [id])
+  roteadorId String?
+  roteador   Roteador? @relation(fields: [roteadorId], references: [id], onDelete: SetNull)
 
   @@index([ativo])
   @@index([pedidoId])
+  @@index([roteadorId])
   @@map("sessoes_ativas")
 }
 
@@ -91,10 +100,14 @@ model Pedido {
   updatedAt     DateTime      @updatedAt
   charges       Charge[]
   SessaoAtiva   SessaoAtiva[]
+  deviceId      String?
+  deviceIdentifier String?
+  device        Dispositivo?  @relation(fields: [deviceId], references: [id])
 
   @@index([status, createdAt])
   @@index([method, createdAt])
   @@index([status, processedAt])
+  @@index([deviceId])
 }
 
 model Charge {

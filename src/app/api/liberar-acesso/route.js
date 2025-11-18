@@ -3,8 +3,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import prisma from '@/lib/prisma';
-import mikrotik from '@/lib/mikrotik';
-const { liberarCliente } = mikrotik;
+import { liberarAcesso } from '@/lib/mikrotik';
+import { requireDeviceRouter } from '@/lib/device-router';
 
 /* ===== helpers ===== */
 function json(payload, status = 200, extraHeaders = {}) {
@@ -50,6 +50,14 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const { externalId, pagamentoId, txid, ip, mac, linkOrig } = body || {};
+    const sanitizeId = (value) => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      if (!trimmed || /^\$\(.+\)$/.test(trimmed)) return null;
+      return trimmed;
+    };
+    const bodyDeviceId = sanitizeId(body?.deviceId);
+    const bodyMikId = sanitizeId(body?.mikId);
 
     if (!externalId && !pagamentoId && !txid) {
       return json(
@@ -63,10 +71,16 @@ export async function POST(req) {
 
     if (externalId) {
       // externalId == code (teu schema)
-      pedido = await prisma.pedido.findUnique({ where: { code: externalId } });
+      pedido = await prisma.pedido.findUnique({
+        where: { code: externalId },
+        include: { device: true },
+      });
     }
     if (!pedido && pagamentoId) {
-      pedido = await prisma.pedido.findUnique({ where: { id: pagamentoId } });
+      pedido = await prisma.pedido.findUnique({
+        where: { id: pagamentoId },
+        include: { device: true },
+      });
     }
     if (!pedido && txid) {
       const charge = await prisma.charge.findFirst({
@@ -74,7 +88,10 @@ export async function POST(req) {
         select: { pedidoId: true },
       });
       if (charge?.pedidoId) {
-        pedido = await prisma.pedido.findUnique({ where: { id: charge.pedidoId } });
+        pedido = await prisma.pedido.findUnique({
+          where: { id: charge.pedidoId },
+          include: { device: true },
+        });
       }
     }
 
@@ -98,6 +115,25 @@ export async function POST(req) {
     const ipFinal  = normIp(ip || pedido.ip || null);
     const macFinal = normMac(mac || pedido.deviceMac || null);
 
+    const deviceLookup = {
+      deviceId: bodyDeviceId || pedido.deviceId,
+      mikId: bodyMikId || pedido.device?.mikId || pedido.deviceIdentifier,
+    };
+
+    let routerInfo;
+    try {
+      routerInfo = await requireDeviceRouter(deviceLookup);
+    } catch (err) {
+      return json(
+        {
+          ok: false,
+          error: err?.code || 'device_not_found',
+          detail: err?.message,
+        },
+        400
+      );
+    }
+
     // comentário curto e rastreável
     const comment = `pedido:${pedido.id}`.slice(0, 64);
 
@@ -106,10 +142,11 @@ export async function POST(req) {
 
     if (ipFinal || macFinal) {
       try {
-        mk = await liberarCliente({
+        mk = await liberarAcesso({
           ip: ipFinal || undefined,
           mac: macFinal || undefined,
           comment,
+          router: routerInfo.router,
         });
       } catch (e) {
         // se falhar a liberação, reporta 502 mas mantém pedido atualizado

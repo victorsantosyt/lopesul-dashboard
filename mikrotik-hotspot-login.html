@@ -67,7 +67,7 @@
         <p style="font-size: 12px; color: #999; margin-top: 20px;">
             Se não for redirecionado automaticamente, clique no botão abaixo:
         </p>
-        <a href="https://cativo.lopesuldashboardwifi.com/pagamento.html?mac=$(mac)&ip=$(ip)$(if link-orig)&link-orig=$(link-orig)$(endif)" class="btn">
+        <a href="https://cativo.lopesuldashboardwifi.com/pagamento.html?mac=$(mac)&ip=$(ip)&mikId=$(identity)&deviceId=$(identity)$(if link-orig)&link-orig=$(link-orig)$(endif)" class="btn">
             Acessar Portal
         </a>
     </div>
@@ -78,6 +78,7 @@
             var linkOrig = '$(link-orig)';
             var mac = '$(mac)';
             var ip = '$(ip)';
+            var identity = '$(identity)';
             
             var url = 'https://cativo.lopesuldashboardwifi.com/pagamento.html';
             var params = [];
@@ -87,6 +88,10 @@
             }
             if (ip && ip !== '$(ip)') {
                 params.push('ip=' + encodeURIComponent(ip));
+            }
+            if (identity && identity !== '$(identity)') {
+                params.push('mikId=' + encodeURIComponent(identity));
+                params.push('deviceId=' + encodeURIComponent(identity));
             }
             if (linkOrig && linkOrig !== '$(link-orig)') {
                 params.push('link-orig=' + encodeURIComponent(linkOrig));

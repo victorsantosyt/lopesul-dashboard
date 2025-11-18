@@ -1,30 +1,54 @@
 // src/lib/mikrotik.js
 import MikroNode from "mikronode-ng2";
+import { relayFetch } from "./relay";
 
-function getConnection() {
-  const host = process.env.MIKROTIK_HOST;
-  const port = Number(process.env.MIKROTIK_PORT || 8728);
-  const user = process.env.MIKROTIK_USER;
-  const pass = process.env.MIKROTIK_PASS;
+function resolveRouterConfig(router = {}) {
+  const host = router.host || process.env.MIKROTIK_HOST;
+  const user = router.user || process.env.MIKROTIK_USER;
+  const pass = router.pass || process.env.MIKROTIK_PASS;
+  const port = Number(
+    router.port ??
+      process.env.MIKROTIK_PORT ??
+      process.env.PORTA_MIKROTIK ??
+      8728
+  );
+  const timeout = Number(router.timeout ?? process.env.MIKROTIK_TIMEOUT_MS ?? 5000);
+  const secure =
+    typeof router.secure === "boolean"
+      ? router.secure
+      : router.ssl ?? router.tls ?? false;
 
   if (!host || !user || !pass) {
-    throw new Error("Faltam variáveis de ambiente: MIKROTIK_HOST/USER/PASS");
+    throw new Error("Faltam credenciais de Mikrotik (host/user/pass).");
   }
 
-  return new MikroNode.Connection({
-    host,
-    port,
-    user,
-    password: pass,
-    timeout: 5000,
-  });
+  return { host, user, pass, port, timeout, secure };
+}
+
+function getConnection(router) {
+  const cfg = resolveRouterConfig(router);
+  const options = {
+    host: cfg.host,
+    port: cfg.port,
+    user: cfg.user,
+    password: cfg.pass,
+    timeout: cfg.timeout,
+  };
+
+  if (cfg.secure) {
+    options.tls = {
+      rejectUnauthorized: false,
+    };
+  }
+
+  return new MikroNode.Connection(options);
 }
 
 /** ============================
  * PING TESTE (usa API, não SSH)
  * ============================ */
-export async function getStarlinkStatus() {
-  const conn = getConnection();
+export async function getStarlinkStatus(router) {
+  const conn = getConnection(router);
   try {
     await conn.connect();
     const chan = conn.openChannel();
@@ -49,8 +73,8 @@ export async function getStarlinkStatus() {
 /** ============================
  * LISTA SESSÕES PPP
  * ============================ */
-export async function listPppActive() {
-  const conn = getConnection();
+export async function listPppActive(router) {
+  const conn = getConnection(router);
   try {
     await conn.connect();
     const chan = conn.openChannel();
@@ -65,22 +89,109 @@ export async function listPppActive() {
 }
 
 /** ============================
- * LIBERAR ACESSO
+ * LIBERAR ACESSO (preset completo: paid_clients + bypass + matar sessão)
  * ============================ */
-export async function liberarAcesso({ ip, mac, username, comment = "painel" } = {}) {
-  const conn = getConnection();
+export async function liberarAcesso({ ip, mac, orderId, comment, router } = {}) {
+  // Segurança: não vamos liberar nada sem IP/MAC válidos
+  if (!ip || ip === "0.0.0.0") {
+    throw new Error(`[MIKROTIK] IP inválido para liberação: ${ip}`);
+  }
+  if (!mac) {
+    throw new Error("[MIKROTIK] MAC inválido para liberação");
+  }
+
+  const finalComment = comment || `paid:${orderId || "sem-order"}`;
+
+  // Usa relay se router estiver configurado, senão tenta API direta
+  if (router && router.host) {
+    try {
+      const cfg = resolveRouterConfig(router);
+      const sentences = [
+        `/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${finalComment}"`,
+        `/ip/hotspot/ip-binding/add address=${ip} mac-address=${mac} server=hotspot1 type=bypassed comment="${finalComment}"`,
+        `/ip/hotspot/active/remove [find where address=${ip} or mac-address=${mac}]`,
+        `/ip/firewall/connection/remove [find src-address~"${ip}" or dst-address~"${ip}"]`,
+      ];
+
+      console.log("[MIKROTIK] Usando relay para liberar acesso:", ip, mac);
+      
+      for (const cmd of sentences) {
+        console.log("[MIKROTIK] Executando via relay:", cmd);
+        try {
+          const response = await relayFetch("/relay/exec", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              host: cfg.host,
+              user: cfg.user,
+              pass: cfg.pass,
+              port: cfg.port,
+              command: cmd,
+            }),
+          });
+
+          const result = await response.json().catch(() => ({}));
+          if (!result.ok) {
+            console.warn("[MIKROTIK] Comando falhou via relay:", cmd, result.error);
+          }
+        } catch (cmdErr) {
+          console.error("[MIKROTIK] Erro ao executar comando via relay:", cmd, cmdErr.message);
+        }
+      }
+
+      console.log("[MIKROTIK] Acesso liberado com sucesso via relay para", ip, mac, finalComment);
+      return { ok: true, cmds: sentences, via: "relay" };
+    } catch (err) {
+      console.error("[MIKROTIK] Erro ao usar relay, tentando API direta:", err.message);
+      // Fallback para API direta se relay falhar
+    }
+  }
+
+  // Fallback: API direta (mikronode-ng2)
+  const conn = getConnection(router);
   try {
     await conn.connect();
     const chan = conn.openChannel();
 
     const cmds = [];
-    if (ip) cmds.push(`/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${comment}"`);
-    if (mac) cmds.push(`/interface/wireless/access-list/add mac-address=${mac} comment="${comment}"`);
-    if (username) cmds.push(`/ip/hotspot/user/add name=${username} password=${username}`);
 
-    for (const cmd of cmds) await chan.write(cmd);
+    // 1) Marca IP como pago
+    cmds.push(
+      `/ip/firewall/address-list/add ` +
+        `list=paid_clients ` +
+        `address=${ip} ` +
+        `comment="${finalComment}"`
+    );
 
-    return { ok: true, cmds };
+    // 2) Cria bypass no hotspot
+    cmds.push(
+      `/ip/hotspot/ip-binding/add ` +
+        `address=${ip} ` +
+        `mac-address=${mac} ` +
+        `server=hotspot1 ` +
+        `type=bypassed ` +
+        `comment="${finalComment}"`
+    );
+
+    // 3) Derruba sessão antiga do hotspot
+    cmds.push(
+      `/ip/hotspot/active/remove ` +
+        `[find where address=${ip} or mac-address=${mac}]`
+    );
+
+    // 4) Limpa conexões antigas do IP
+    cmds.push(
+      `/ip/firewall/connection/remove ` +
+        `[find src-address~"${ip}" or dst-address~"${ip}"]`
+    );
+
+    for (const cmd of cmds) {
+      console.log("[MIKROTIK] Executando (API direta):", cmd);
+      await chan.write(cmd);
+    }
+
+    console.log("[MIKROTIK] Acesso liberado com sucesso (API direta) para", ip, mac, finalComment);
+    return { ok: true, cmds, via: "api_direta" };
   } catch (err) {
     console.error("[MIKROTIK] liberarAcesso API error:", err.message);
     return { ok: false, error: err.message };
@@ -92,8 +203,8 @@ export async function liberarAcesso({ ip, mac, username, comment = "painel" } = 
 /** ============================
  * REVOGAR ACESSO
  * ============================ */
-export async function revogarAcesso({ ip, mac, username } = {}) {
-  const conn = getConnection();
+export async function revogarAcesso({ ip, mac, username, router } = {}) {
+  const conn = getConnection(router);
   try {
     await conn.connect();
     const chan = conn.openChannel();

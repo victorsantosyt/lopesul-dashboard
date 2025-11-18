@@ -1,6 +1,7 @@
 // src/app/api/payments/pix/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { findDeviceRecord } from "@/lib/device-router";
 
 const toCents = (v) => {
   const n = Number(v);
@@ -20,6 +21,36 @@ export async function POST(req) {
     }
 
     const descricao = body.descricao || "Acesso Wi-Fi";
+    const sanitizeId = (value) => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      if (!trimmed || /^\$\(.+\)$/.test(trimmed)) return null;
+      return trimmed;
+    };
+    const deviceIdRaw =
+      sanitizeId(body.deviceId) ||
+      sanitizeId(body.dispositivoId) ||
+      sanitizeId(body.device);
+    const mikIdRaw =
+      sanitizeId(body.mikId) ||
+      sanitizeId(body.mikID) ||
+      sanitizeId(body.mikrotikId) ||
+      sanitizeId(body.routerId);
+
+    if (!deviceIdRaw && !mikIdRaw) {
+      return NextResponse.json(
+        { error: "deviceId ou mikId são obrigatórios para identificar o Mikrotik." },
+        { status: 400 }
+      );
+    }
+
+    const deviceRecord = await findDeviceRecord({ deviceId: deviceIdRaw, mikId: mikIdRaw });
+    if (!deviceRecord) {
+      return NextResponse.json(
+        { error: "Dispositivo não encontrado para o identificador informado." },
+        { status: 404 }
+      );
+    }
 
     // --- validação do cliente ---
     const customerIn = body.customer || {
@@ -123,7 +154,12 @@ export async function POST(req) {
         customerName: customer.name,
         customerEmail: customer.email,
         customerDoc: customer.document,
-        metadata: { pagarmeOrderId: result.id, pagarmeOrderCode: result.code }
+      metadata: {
+        pagarmeOrderId: result.id,
+        pagarmeOrderCode: result.code,
+        deviceId: deviceRecord.id,
+        mikId: deviceRecord.mikId ?? mikIdRaw ?? null,
+      }
       };
 
       // Adiciona IP e MAC somente se forem válidos
@@ -133,6 +169,9 @@ export async function POST(req) {
       if (body.deviceMac && typeof body.deviceMac === 'string') {
         pedidoData.deviceMac = body.deviceMac.trim().toUpperCase();
       }
+
+      pedidoData.deviceId = deviceRecord.id;
+      pedidoData.deviceIdentifier = deviceRecord.mikId || mikIdRaw || deviceIdRaw;
 
       console.log("[PIX] Saving to DB:", { code: result.id, ip: pedidoData.ip, mac: pedidoData.deviceMac });
 

@@ -38,21 +38,6 @@ async function checkPagarmeByOrderId(orderId) {
             data: { status: 'PAID' }
           });
           console.log(`[VERIFICAR] Atualizou status para PAID: ${orderId}`);
-          
-          // Autoriza o cliente no MikroTik
-          if (pedido.ip || pedido.deviceMac) {
-            try {
-              const libRes = await fetch(`${process.env.APP_URL || 'http://localhost:3000'}/api/liberar-acesso`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ externalId: orderId })
-              });
-              const libData = await libRes.json();
-              console.log(`[VERIFICAR] Liberou acesso: ${libData.ok}`);
-            } catch (libErr) {
-              console.error(`[VERIFICAR] Erro ao liberar acesso:`, libErr.message);
-            }
-          }
         }
       } catch (dbErr) {
         console.error(`[VERIFICAR] Erro ao atualizar DB:`, dbErr.message);

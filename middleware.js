@@ -36,6 +36,7 @@ const PUBLIC_APIS = [
 
   // mikrotik utilities
   '/api/mikrotik/upload-redirect',
+  '/api/mikrotik/arp',
 
   // auth/config leves
   '/api/auth/session-preference',
