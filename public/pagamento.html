@@ -145,8 +145,8 @@
       let mikId = sanitizeId(get("mikId") || get("mikID") || "");
       let deviceIdentifier = deviceId || mikId || null;
       
-      // Detecta IP, MAC e dispositivo automaticamente via API
-      (async () => {
+      // Função para detectar dispositivo automaticamente
+      async function detectarDispositivo() {
         try {
           const res = await fetch('/api/detect-client');
           const data = await res.json();
@@ -181,10 +181,15 @@
             }
           }
           
+          return { deviceId, mikId, deviceIdentifier, ip, mac };
         } catch (e) {
           console.error('[Portal] Erro ao detectar cliente:', e);
+          return { deviceId, mikId, deviceIdentifier, ip, mac };
         }
-      })();
+      }
+      
+      // Detecta automaticamente ao carregar a página
+      detectarDispositivo();
       
       if (!deviceIdentifier) {
         console.warn('[Portal] Sem identificador do dispositivo (deviceId/mikId). Aguardando detecção automática...');
@@ -309,16 +314,17 @@
           s.textContent = msg;
         };
 
-        // Se não tem deviceIdentifier, tenta detectar automaticamente
+        // Se não tem deviceIdentifier, tenta detectar automaticamente (aguarda a resposta)
         if (!deviceIdentifier) {
           try {
-            const res = await fetch('/api/detect-client');
-            const data = await res.json();
+            const resultado = await detectarDispositivo();
+            deviceId = resultado.deviceId;
+            mikId = resultado.mikId;
+            deviceIdentifier = resultado.deviceIdentifier;
+            ip = resultado.ip || ip;
+            mac = resultado.mac || mac;
             
-            if (data.deviceIdentifier) {
-              deviceId = data.deviceId || null;
-              mikId = data.mikId || null;
-              deviceIdentifier = data.deviceIdentifier;
+            if (deviceIdentifier) {
               console.log('[Portal] Dispositivo detectado na hora do checkout:', { deviceId, mikId, deviceIdentifier });
             }
           } catch (e) {
