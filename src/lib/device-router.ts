@@ -31,21 +31,42 @@ function buildError(code: string, message: string, extra: Record<string, unknown
   return err;
 }
 
+// Verifica se uma string parece ser um UUID
+function isUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 export async function findDeviceRecord({ deviceId, mikId, ip }: DeviceLookup = {}) {
   console.log('[device-router] Buscando dispositivo:', { deviceId, mikId, ip });
   
   const id = normalizeString(deviceId);
   if (id) {
-    console.log('[device-router] Buscando por id:', id);
-    const byId = await prisma.dispositivo.findUnique({ where: { id } }).catch((err) => {
-      console.error('[device-router] Erro ao buscar por id:', err);
-      return null;
-    });
-    if (byId) {
-      console.log('[device-router] Dispositivo encontrado por id:', byId.id);
-      return byId;
+    // Se deviceId parece ser um UUID, busca por id
+    if (isUUID(id)) {
+      console.log('[device-router] Buscando por id (UUID):', id);
+      const byId = await prisma.dispositivo.findUnique({ where: { id } }).catch((err) => {
+        console.error('[device-router] Erro ao buscar por id:', err);
+        return null;
+      });
+      if (byId) {
+        console.log('[device-router] Dispositivo encontrado por id:', byId.id);
+        return byId;
+      }
+      console.log('[device-router] Dispositivo não encontrado por id');
+    } else {
+      // Se deviceId não é UUID, pode ser um mikId, então tenta buscar por mikId
+      console.log('[device-router] deviceId não é UUID, tentando buscar por mikId:', id);
+      const byMikId = await prisma.dispositivo.findUnique({ where: { mikId: id } }).catch((err) => {
+        console.error('[device-router] Erro ao buscar por mikId (do deviceId):', err);
+        return null;
+      });
+      if (byMikId) {
+        console.log('[device-router] Dispositivo encontrado por mikId (do deviceId):', byMikId.id);
+        return byMikId;
+      }
+      console.log('[device-router] Dispositivo não encontrado por mikId (do deviceId)');
     }
-    console.log('[device-router] Dispositivo não encontrado por id');
   }
 
   const mik = normalizeString(mikId);
@@ -60,6 +81,25 @@ export async function findDeviceRecord({ deviceId, mikId, ip }: DeviceLookup = {
       return byMik;
     }
     console.log('[device-router] Dispositivo não encontrado por mikId');
+    
+    // Se não encontrou exato, tenta busca case-insensitive (fallback)
+    // Nota: PostgreSQL precisa usar contains com mode insensitive
+    console.log('[device-router] Tentando busca case-insensitive por mikId...');
+    const byMikCaseInsensitive = await prisma.dispositivo.findFirst({
+      where: {
+        mikId: {
+          contains: mik,
+          mode: 'insensitive',
+        },
+      },
+    }).catch((err) => {
+      console.error('[device-router] Erro ao buscar por mikId (case-insensitive):', err);
+      return null;
+    });
+    if (byMikCaseInsensitive) {
+      console.log('[device-router] Dispositivo encontrado por mikId (case-insensitive):', byMikCaseInsensitive.id);
+      return byMikCaseInsensitive;
+    }
   }
 
   const deviceIp = normalizeString(ip);
