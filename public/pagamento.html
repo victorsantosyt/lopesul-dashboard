@@ -317,6 +317,7 @@
         // Se não tem deviceIdentifier, tenta detectar automaticamente (aguarda a resposta)
         if (!deviceIdentifier) {
           try {
+            console.log('[Portal] Tentando detectar dispositivo antes do checkout...');
             const resultado = await detectarDispositivo();
             deviceId = resultado.deviceId;
             mikId = resultado.mikId;
@@ -325,17 +326,22 @@
             mac = resultado.mac || mac;
             
             if (deviceIdentifier) {
-              console.log('[Portal] Dispositivo detectado na hora do checkout:', { deviceId, mikId, deviceIdentifier });
+              console.log('[Portal] ✅ Dispositivo detectado na hora do checkout:', { deviceId, mikId, deviceIdentifier, ip, mac });
+            } else {
+              console.warn('[Portal] ⚠️ Dispositivo não detectado. Resultado:', resultado);
             }
           } catch (e) {
-            console.error('[Portal] Erro ao detectar dispositivo:', e);
+            console.error('[Portal] ❌ Erro ao detectar dispositivo:', e);
           }
         }
 
         if (!deviceIdentifier) {
           setErro('Dispositivo não identificado. Atualize a página ou tente novamente no Wi-Fi do ônibus.');
+          console.error('[Portal] ❌ Não foi possível identificar o dispositivo. deviceId:', deviceId, 'mikId:', mikId, 'ip:', ip);
           return;
         }
+        
+        console.log('[Portal] ✅ Prosseguindo com checkout. deviceId:', deviceId, 'mikId:', mikId, 'deviceIdentifier:', deviceIdentifier);
 
         if (!onlyDigits(docCli)) {
           elClienteForm.style.display = 'block';

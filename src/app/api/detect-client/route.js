@@ -6,15 +6,36 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   // Tenta obter IP de várias fontes (ordem de prioridade)
+  // IMPORTANTE: Mikrotik pode passar o IP do cliente em diferentes headers
   const forwarded = req.headers.get("x-forwarded-for");
   const realIp = req.headers.get("x-real-ip");
   const cfConnectingIp = req.headers.get("cf-connecting-ip");
   const remoteAddr = req.headers.get("x-remote-addr") || 
                      req.headers.get("remote-addr") ||
                      null;
+  // Headers específicos do Mikrotik
+  const mikrotikIp = req.headers.get("x-mikrotik-ip") ||
+                     req.headers.get("x-client-ip") ||
+                     req.headers.get("x-original-ip") ||
+                     null;
   
   // Tenta pegar o IP real do cliente (primeiro da cadeia x-forwarded-for)
-  let ip = cfConnectingIp || realIp || forwarded?.split(",")[0]?.trim() || remoteAddr || "unknown";
+  // Prioriza IPs locais se disponíveis
+  let ip = mikrotikIp || realIp || cfConnectingIp || forwarded?.split(",")[0]?.trim() || remoteAddr || "unknown";
+  
+  // Se o IP não é local mas temos x-forwarded-for, tenta pegar o primeiro IP local da cadeia
+  if (forwarded && !ip.startsWith("192.168.") && !ip.startsWith("10.") && !ip.startsWith("172.")) {
+    const ips = forwarded.split(",").map(i => i.trim());
+    const localIp = ips.find(i => 
+      i.startsWith("192.168.") || 
+      i.startsWith("10.") || 
+      (i.startsWith("172.") && parseInt(i.split(".")[1]) >= 16 && parseInt(i.split(".")[1]) <= 31)
+    );
+    if (localIp) {
+      ip = localIp;
+      console.log('[detect-client] IP local encontrado na cadeia x-forwarded-for:', ip);
+    }
+  }
   
   // Se ainda for localhost/unknown, tenta pegar do socket (último recurso)
   if (ip === "unknown" || ip === "127.0.0.1" || ip === "::1") {
