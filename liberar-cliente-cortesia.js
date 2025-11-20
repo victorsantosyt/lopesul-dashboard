@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Script para liberar acesso de cortesia (sem criar pedido)
+ * Script para liberar acesso de cortesia (cria pedido temporário)
  * 
  * Uso:
  *   node liberar-cliente-cortesia.js <IP> <MAC> [deviceId] [mikId]
@@ -9,7 +9,10 @@
  *   node liberar-cliente-cortesia.js 192.168.88.65 1A:A0:2A:08:C7:12
  */
 
+import { PrismaClient } from '@prisma/client';
 import fetch from 'node-fetch';
+
+const prisma = new PrismaClient();
 
 const IP = process.argv[2];
 const MAC = process.argv[3];
@@ -37,8 +40,45 @@ async function main() {
     if (MIK_ID) console.log(`   MikId: ${MIK_ID}`);
     console.log('');
 
+    // Criar pedido temporário de cortesia
+    const pedidoCode = `CORTESIA-${Date.now()}`;
+    console.log('📝 Criando pedido temporário de cortesia...');
+    
+    // Buscar dispositivo se deviceId/mikId fornecido
+    let deviceIdFinal = DEVICE_ID;
+    if (!deviceIdFinal && MIK_ID) {
+      const device = await prisma.dispositivo.findUnique({
+        where: { mikId: MIK_ID },
+        select: { id: true },
+      });
+      if (device) {
+        deviceIdFinal = device.id;
+        console.log(`   ✅ Dispositivo encontrado: ${deviceIdFinal}`);
+      }
+    }
+
+    const pedido = await prisma.pedido.create({
+      data: {
+        code: pedidoCode,
+        status: 'PAID',
+        amount: 0, // Cortesia = R$ 0,00
+        description: 'Acesso de Cortesia',
+        ip: IP,
+        deviceMac: MAC,
+        deviceId: deviceIdFinal,
+        metadata: {
+          cortesia: true,
+          motivo: 'Ajudou a melhorar o sistema',
+        },
+      },
+    });
+
+    console.log(`   ✅ Pedido criado: ${pedidoCode} (ID: ${pedido.id})`);
+    console.log('');
+
+    // Agora liberar acesso usando o pedido criado
     const body = {
-      externalId: `cortesia-${Date.now()}`,
+      externalId: pedidoCode,
       ip: IP,
       mac: MAC,
     };
@@ -57,6 +97,8 @@ async function main() {
 
     if (!response.ok) {
       console.error('❌ Erro:', data.error || `HTTP ${response.status}`);
+      // Deletar pedido criado em caso de erro
+      await prisma.pedido.delete({ where: { id: pedido.id } }).catch(() => {});
       process.exit(1);
     }
 
@@ -64,6 +106,7 @@ async function main() {
       console.log('✅ Acesso liberado com sucesso!');
       console.log('');
       console.log('📋 Detalhes:');
+      console.log(`   Pedido: ${pedidoCode}`);
       if (data.mikrotik) {
         console.log(`   Mikrotik: ${data.mikrotik.via || 'N/A'}`);
         if (data.mikrotik.cmds) {
@@ -75,12 +118,16 @@ async function main() {
       console.log('   Se não funcionar, peça para o cliente fazer uma nova requisição HTTP.');
     } else {
       console.error('❌ Falha ao liberar acesso:', data);
+      // Deletar pedido criado em caso de erro
+      await prisma.pedido.delete({ where: { id: pedido.id } }).catch(() => {});
       process.exit(1);
     }
 
   } catch (error) {
     console.error('❌ Erro:', error.message);
     process.exit(1);
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
