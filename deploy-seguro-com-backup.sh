@@ -22,9 +22,11 @@ BACKUP_DIR="/backup"
 echo -e "${YELLOW}📦 Passo 1: Fazendo backup do banco de dados...${NC}"
 cd "$PROJECT_DIR"
 
-# Carregar .env se existir
+# Carregar DATABASE_URL do .env de forma segura
 if [ -f .env ]; then
-  export $(cat .env | grep -v '^#' | xargs)
+  DATABASE_URL=$(grep "^DATABASE_URL=" .env | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+  DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/?.*$//')
+  export DATABASE_URL
 fi
 
 if [ -z "$DATABASE_URL" ]; then
