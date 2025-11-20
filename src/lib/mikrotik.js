@@ -110,10 +110,8 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoI
     `/ip/hotspot/ip-binding/add address=${ip} mac-address=${mac} server=hotspot1 type=bypassed comment="${finalComment}"`,
     `/ip/hotspot/active/remove [find where address=${ip} or mac-address=${mac}]`,
     `/ip/firewall/connection/remove [find src-address~"${ip}" or dst-address~"${ip}"]`,
-    // Criar usuário temporário (se não existir) para permitir sessão ativa
-    `/ip/hotspot/user/add name=${username} password=temp123 profile=default limit-uptime=120m comment="${finalComment}"`,
-    // Criar sessão ativa para forçar autenticação imediata (requer usuário)
-    `/ip/hotspot/active/add user=${username} address=${ip} mac-address=${mac} comment="${finalComment}"`,
+    // Nota: ip-binding com type=bypassed já libera o acesso
+    // Cliente precisa fazer nova requisição HTTP para Mikrotik reconhecer o binding
   ];
 
   // ===== MODO INTELIGENTE (prioridade) =====
@@ -246,24 +244,8 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoI
         `[find src-address~"${ip}" or dst-address~"${ip}"]`
     );
 
-    // 5) Criar usuário temporário (se não existir) para permitir sessão ativa
-    cmds.push(
-      `/ip/hotspot/user/add ` +
-        `name=${username} ` +
-        `password=temp123 ` +
-        `profile=default ` +
-        `limit-uptime=120m ` +
-        `comment="${finalComment}"`
-    );
-
-    // 6) Cria sessão ativa para forçar autenticação imediata (requer usuário)
-    cmds.push(
-      `/ip/hotspot/active/add ` +
-        `user=${username} ` +
-        `address=${ip} ` +
-        `mac-address=${mac} ` +
-        `comment="${finalComment}"`
-    );
+    // 5) Nota: ip-binding com type=bypassed já libera o acesso
+    // Cliente precisa fazer nova requisição HTTP para Mikrotik reconhecer o binding
 
     for (const cmd of cmds) {
       console.log("[MIKROTIK] Executando (API direta):", cmd);
