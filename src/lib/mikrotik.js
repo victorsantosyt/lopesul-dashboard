@@ -102,11 +102,16 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoI
 
   const finalComment = comment || `paid:${orderId || pedidoId || "sem-order"}`;
 
+  // Criar nome de usuário temporário baseado no MAC (sem dois pontos)
+  const username = `paid_${mac.replace(/:/g, "").toLowerCase()}`;
+
   const sentences = [
     `/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${finalComment}"`,
     `/ip/hotspot/ip-binding/add address=${ip} mac-address=${mac} server=hotspot1 type=bypassed comment="${finalComment}"`,
     `/ip/hotspot/active/remove [find where address=${ip} or mac-address=${mac}]`,
     `/ip/firewall/connection/remove [find src-address~"${ip}" or dst-address~"${ip}"]`,
+    // Criar sessão ativa para forçar autenticação imediata
+    `/ip/hotspot/active/add server=hotspot1 address=${ip} mac-address=${mac} comment="${finalComment}"`,
   ];
 
   // ===== MODO INTELIGENTE (prioridade) =====
@@ -237,6 +242,15 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoI
     cmds.push(
       `/ip/firewall/connection/remove ` +
         `[find src-address~"${ip}" or dst-address~"${ip}"]`
+    );
+
+    // 5) Cria sessão ativa para forçar autenticação imediata
+    cmds.push(
+      `/ip/hotspot/active/add ` +
+        `server=hotspot1 ` +
+        `address=${ip} ` +
+        `mac-address=${mac} ` +
+        `comment="${finalComment}"`
     );
 
     for (const cmd of cmds) {
