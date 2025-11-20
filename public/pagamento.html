@@ -195,6 +195,87 @@
         console.warn('[Portal] Sem identificador do dispositivo (deviceId/mikId). Aguardando detecção automática...');
       }
 
+      // VERIFICAÇÃO CRÍTICA: Verificar se cliente já tem acesso (resolve problema de MAC aleatório)
+      async function verificarAcessoExistente() {
+        try {
+          // Aguardar um pouco para garantir que IP foi detectado
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Se não tem IP ainda, tentar detectar
+          if (!ip) {
+            const res = await fetch('/api/detect-client');
+            const data = await res.json();
+            if (data.ip && data.ip !== 'unknown') {
+              ip = data.ip;
+            }
+          }
+
+          // Se ainda não tem IP, não pode verificar
+          if (!ip || ip === 'unknown') {
+            console.log('[Portal] IP não disponível para verificação de acesso');
+            return false;
+          }
+
+          console.log('[Portal] Verificando se já tem acesso para IP:', ip);
+          
+          // Verificar se há pedido pago recente ou sessão ativa para aquele IP
+          const verificarRes = await fetch(`/api/verificar-acesso-por-ip?ip=${encodeURIComponent(ip)}`);
+          const verificarData = await verificarRes.json();
+
+          if (verificarData.temAcesso) {
+            console.log('[Portal] ✅ Cliente já tem acesso!', verificarData);
+            
+            // Mostrar mensagem e redirecionar
+            const viewEscolha = document.getElementById('view-escolha');
+            const viewCheckout = document.getElementById('view-checkout');
+            
+            if (viewEscolha) viewEscolha.style.display = 'none';
+            if (viewCheckout) viewCheckout.style.display = 'none';
+            
+            // Criar mensagem de sucesso
+            const card = document.querySelector('.card');
+            if (card) {
+              card.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px;">
+                  <div style="font-size: 48px; margin-bottom: 20px;">✅</div>
+                  <h1 style="color: #63b245; margin-bottom: 10px;">Acesso Liberado!</h1>
+                  <p style="color: #fff; font-size: 18px; margin-bottom: 30px;">
+                    Você já possui acesso à internet.<br>
+                    Redirecionando...
+                  </p>
+                  <div class="pill ok" style="display: inline-block; padding: 15px 25px;">
+                    Aproveite sua conexão!
+                  </div>
+                </div>
+              `;
+            }
+            
+            // Redirecionar após 2 segundos
+            setTimeout(() => {
+              try {
+                const fallback = 'http://clients3.google.com/generate_204';
+                const candidate = linkOrig || fallback;
+                window.location.href = candidate;
+              } catch {
+                window.location.href = '/';
+              }
+            }, 2000);
+            
+            return true;
+          }
+          
+          console.log('[Portal] Cliente não tem acesso, mostrando página de pagamento');
+          return false;
+        } catch (error) {
+          console.error('[Portal] Erro ao verificar acesso existente:', error);
+          // Em caso de erro, continua mostrando a página de pagamento
+          return false;
+        }
+      }
+
+      // Verificar acesso ao carregar a página
+      verificarAcessoExistente();
+
       let nomeCli = get("nome") || get("name") || "Cliente";
       let docCli  = get("doc")  || get("document") || "";
 

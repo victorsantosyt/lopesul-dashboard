@@ -40,6 +40,7 @@ const PUBLIC_APIS = [
 
   // detecção de cliente (para captive portal)
   '/api/detect-client',
+  '/api/verificar-acesso-por-ip',
 
   // auth/config leves
   '/api/auth/session-preference',
