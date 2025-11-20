@@ -38,6 +38,10 @@ export async function GET(req) {
       ip = ipParam;
     }
 
+    // Aceitar MAC via query parameter (para verificação por MAC também)
+    const macParam = req.nextUrl.searchParams.get("mac");
+    const mac = macParam ? macParam.trim().toUpperCase() : null;
+
     if (!ip || ip === "unknown" || ip === "127.0.0.1") {
       return NextResponse.json({ 
         temAcesso: false, 
@@ -45,19 +49,29 @@ export async function GET(req) {
       });
     }
 
-    console.log('[verificar-acesso-por-ip] Verificando acesso para IP:', ip);
+    console.log('[verificar-acesso-por-ip] Verificando acesso para IP:', ip, mac ? `MAC: ${mac}` : '');
 
     // Verificar se há pedido PAGO recente (últimas 3 horas) para aquele IP
     const tresHorasAtras = new Date(Date.now() - 3 * 60 * 60 * 1000);
     
-    const pedidoPago = await prisma.pedido.findFirst({
-      where: {
-        ip: ip,
-        status: "PAID",
-        createdAt: {
-          gte: tresHorasAtras,
-        },
+    // Buscar por IP OU por MAC (se fornecido)
+    const whereClause = {
+      status: "PAID",
+      createdAt: {
+        gte: tresHorasAtras,
       },
+      OR: [
+        { ip: ip },
+      ],
+    };
+
+    // Se tiver MAC, também buscar por MAC
+    if (mac) {
+      whereClause.OR.push({ deviceMac: mac });
+    }
+
+    const pedidoPago = await prisma.pedido.findFirst({
+      where: whereClause,
       orderBy: {
         createdAt: "desc",
       },
@@ -96,15 +110,24 @@ export async function GET(req) {
       });
     }
 
-    // Também verificar se há sessão ativa para aquele IP (mesmo sem pedido recente)
-    const sessaoAtivaPorIp = await prisma.sessaoAtiva.findFirst({
-      where: {
-        ipCliente: ip,
-        ativo: true,
-        expiraEm: {
-          gte: new Date(),
-        },
+    // Também verificar se há sessão ativa para aquele IP ou MAC (mesmo sem pedido recente)
+    const sessaoWhere = {
+      ativo: true,
+      expiraEm: {
+        gte: new Date(),
       },
+      OR: [
+        { ipCliente: ip },
+      ],
+    };
+
+    // Se tiver MAC, também buscar por MAC
+    if (mac) {
+      sessaoWhere.OR.push({ macCliente: mac });
+    }
+
+    const sessaoAtivaPorIp = await prisma.sessaoAtiva.findFirst({
+      where: sessaoWhere,
       orderBy: {
         expiraEm: "desc",
       },

@@ -216,10 +216,14 @@
             return false;
           }
 
-          console.log('[Portal] Verificando se já tem acesso para IP:', ip);
+          console.log('[Portal] Verificando se já tem acesso para IP:', ip, mac ? `MAC: ${mac}` : '');
           
-          // Verificar se há pedido pago recente ou sessão ativa para aquele IP
-          const verificarRes = await fetch(`/api/verificar-acesso-por-ip?ip=${encodeURIComponent(ip)}`);
+          // Verificar se há pedido pago recente ou sessão ativa para aquele IP ou MAC
+          const params = new URLSearchParams({ ip: encodeURIComponent(ip) });
+          if (mac) {
+            params.set('mac', encodeURIComponent(mac));
+          }
+          const verificarRes = await fetch(`/api/verificar-acesso-por-ip?${params.toString()}`);
           const verificarData = await verificarRes.json();
 
           if (verificarData.temAcesso) {
