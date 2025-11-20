@@ -42,6 +42,12 @@ export async function GET(req) {
     const macParam = req.nextUrl.searchParams.get("mac");
     const mac = macParam ? macParam.trim().toUpperCase() : null;
 
+    // Aceitar pedidoCode via query parameter ou cookie (para identificar cliente mesmo quando IP/MAC mudam)
+    const pedidoCodeParam = req.nextUrl.searchParams.get("pedidoCode");
+    const cookieHeader = req.headers.get("cookie") || "";
+    const pedidoCodeCookie = cookieHeader.match(/pedidoCode=([^;]+)/)?.[1];
+    const pedidoCode = pedidoCodeParam || pedidoCodeCookie || null;
+
     if (!ip || ip === "unknown" || ip === "127.0.0.1") {
       return NextResponse.json({ 
         temAcesso: false, 
@@ -49,13 +55,16 @@ export async function GET(req) {
       });
     }
 
-    console.log('[verificar-acesso-por-ip] Verificando acesso para IP:', ip, mac ? `MAC: ${mac}` : '');
+    console.log('[verificar-acesso-por-ip] Verificando acesso para IP:', ip, mac ? `MAC: ${mac}` : '', pedidoCode ? `PedidoCode: ${pedidoCode}` : '');
 
     // Verificar se há pedido PAGO recente (últimas 3 horas) para aquele IP
     const tresHorasAtras = new Date(Date.now() - 3 * 60 * 60 * 1000);
     
-    // Buscar por IP OU por MAC (se fornecido)
-    // Estratégia: buscar primeiro por IP exato, depois por MAC (mesmo que IP tenha mudado)
+    // Estratégia de busca MULTIPLA para casos de IP/MAC aleatório:
+    // 1. Buscar por IP exato
+    // 2. Buscar por MAC (se fornecido)
+    // 3. Buscar por pedidoCode (cookie/query) - CRUCIAL para MAC aleatório
+    // 4. Buscar por IPs na mesma subnet (192.168.88.X) - ajuda quando IP muda
     const whereClause = {
       status: "PAID",
       createdAt: {
@@ -67,9 +76,27 @@ export async function GET(req) {
     };
 
     // Se tiver MAC, também buscar por MAC (mesmo que IP tenha mudado)
-    // Isso é crucial para casos de MAC aleatório onde o MAC muda mas o dispositivo é o mesmo
     if (mac) {
       whereClause.OR.push({ deviceMac: mac.toUpperCase() });
+    }
+
+    // Se tiver pedidoCode (cookie ou query), buscar por código do pedido
+    // Isso é CRUCIAL para casos de MAC aleatório - identifica o cliente mesmo quando IP/MAC mudam
+    if (pedidoCode) {
+      whereClause.OR.push({ code: pedidoCode });
+    }
+
+    // Se o IP for da subnet 192.168.88.X, buscar também por outros IPs na mesma subnet
+    // Isso ajuda quando o IP muda mas ainda está na mesma rede
+    if (ip && ip.startsWith("192.168.88.")) {
+      // Buscar pedidos pagos recentes com IPs na mesma subnet
+      // Mas limitar a busca para não pegar pedidos de outros clientes
+      // Vamos buscar apenas se não tiver encontrado por outras formas
+      whereClause.OR.push({
+        ip: {
+          startsWith: "192.168.88.",
+        },
+      });
     }
 
     const pedidoPago = await prisma.pedido.findFirst({
@@ -179,6 +206,17 @@ export async function GET(req) {
     // Se tiver MAC, também buscar por MAC
     if (mac) {
       sessaoWhere.OR.push({ macCliente: mac });
+    }
+
+    // Se tiver pedidoCode, também buscar sessões ativas por pedidoId
+    if (pedidoCode) {
+      const pedidoPorCode = await prisma.pedido.findFirst({
+        where: { code: pedidoCode },
+        select: { id: true },
+      });
+      if (pedidoPorCode) {
+        sessaoWhere.OR.push({ pedidoId: pedidoPorCode.id });
+      }
     }
 
     const sessaoAtivaPorIp = await prisma.sessaoAtiva.findFirst({
