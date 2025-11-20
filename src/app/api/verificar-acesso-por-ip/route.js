@@ -92,15 +92,16 @@ export async function GET(req) {
 
     // Se tiver deviceId ou mikId, buscar pedidos pagos do mesmo dispositivo
     // Isso ajuda quando IP/MAC mudam mas o dispositivo é o mesmo
-    if (deviceIdParam || mikIdParam) {
-      const deviceWhere = {};
-      if (deviceIdParam) {
-        deviceWhere.deviceId = deviceIdParam;
-      }
-      if (mikIdParam) {
-        deviceWhere.device = { mikId: mikIdParam };
-      }
-      whereClause.OR.push(deviceWhere);
+    if (deviceIdParam) {
+      whereClause.OR.push({ deviceId: deviceIdParam });
+    }
+    if (mikIdParam) {
+      // Buscar pedidos que têm device com esse mikId
+      whereClause.OR.push({
+        device: {
+          mikId: mikIdParam,
+        },
+      });
     }
 
     // Se o IP for da subnet 192.168.88.X, buscar também por outros IPs na mesma subnet
