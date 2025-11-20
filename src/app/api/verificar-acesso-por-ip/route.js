@@ -40,7 +40,8 @@ export async function GET(req) {
 
     // Aceitar MAC via query parameter (para verificação por MAC também)
     const macParam = req.nextUrl.searchParams.get("mac");
-    const mac = macParam ? macParam.trim().toUpperCase() : null;
+    // Decodificar MAC se vier URL-encoded (ex: 1A%3AA0%3A2A%3A08%3AC7%3A12 -> 1A:A0:2A:08:C7:12)
+    const mac = macParam ? decodeURIComponent(macParam).trim().toUpperCase().replace(/%3A/g, ':') : null;
 
     // Aceitar pedidoCode via query parameter ou cookie (para identificar cliente mesmo quando IP/MAC mudam)
     const pedidoCodeParam = req.nextUrl.searchParams.get("pedidoCode");
