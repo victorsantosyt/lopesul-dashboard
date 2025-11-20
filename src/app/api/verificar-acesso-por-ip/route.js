@@ -94,7 +94,59 @@ export async function GET(req) {
         code: pedidoPago.code,
         createdAt: pedidoPago.createdAt,
         temSessaoAtiva: pedidoPago.SessaoAtiva.length > 0,
+        ipPedido: pedidoPago.ip,
+        macPedido: pedidoPago.deviceMac,
+        ipAtual: ip,
+        macAtual: mac,
       });
+
+      // Se o IP ou MAC mudaram, liberar automaticamente o novo IP/MAC
+      const ipMudou = pedidoPago.ip && pedidoPago.ip !== ip;
+      const macMudou = pedidoPago.deviceMac && mac && pedidoPago.deviceMac.toUpperCase() !== mac.toUpperCase();
+      
+      if (ipMudou || macMudou) {
+        console.log('[verificar-acesso-por-ip] 🔄 IP ou MAC mudou, liberando automaticamente...', {
+          ipAnterior: pedidoPago.ip,
+          ipNovo: ip,
+          macAnterior: pedidoPago.deviceMac,
+          macNovo: mac,
+        });
+        
+        try {
+          // Importar liberarAcesso dinamicamente para evitar dependência circular
+          const { liberarAcesso } = await import("@/lib/mikrotik");
+          
+          // Buscar informações do dispositivo para o modo inteligente
+          const { requireDeviceRouter } = await import("@/lib/device-router");
+          let routerInfo = null;
+          
+          try {
+            routerInfo = await requireDeviceRouter({
+              deviceId: pedidoPago.deviceId,
+              mikId: pedidoPago.device?.mikId || pedidoPago.deviceIdentifier,
+            });
+          } catch (err) {
+            console.warn('[verificar-acesso-por-ip] Dispositivo não encontrado, usando modo direto:', err.message);
+          }
+          
+          // Liberar acesso com o novo IP/MAC
+          await liberarAcesso({
+            ip,
+            mac: mac || pedidoPago.deviceMac, // Usa MAC atual ou do pedido
+            orderId: pedidoPago.code,
+            pedidoId: pedidoPago.id,
+            deviceId: pedidoPago.deviceId,
+            mikId: routerInfo?.device?.mikId,
+            comment: `auto-liberado:${pedidoPago.code}`,
+            router: routerInfo?.router,
+          });
+          
+          console.log('[verificar-acesso-por-ip] ✅ Acesso liberado automaticamente para novo IP/MAC');
+        } catch (err) {
+          console.error('[verificar-acesso-por-ip] Erro ao liberar acesso automaticamente:', err.message);
+          // Continua mesmo se falhar, retorna que tem acesso
+        }
+      }
 
       // Verificar se há sessão ativa
       const sessaoAtiva = pedidoPago.SessaoAtiva[0];
@@ -107,6 +159,7 @@ export async function GET(req) {
         temSessaoAtiva: !!sessaoAtiva,
         sessaoId: sessaoAtiva?.id || null,
         expiraEm: sessaoAtiva?.expiraEm || null,
+        liberadoAutomaticamente: ipMudou || macMudou,
       });
     }
 
