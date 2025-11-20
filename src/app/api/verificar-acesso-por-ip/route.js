@@ -48,6 +48,10 @@ export async function GET(req) {
     const pedidoCodeCookie = cookieHeader.match(/pedidoCode=([^;]+)/)?.[1];
     const pedidoCode = pedidoCodeParam || pedidoCodeCookie || null;
 
+    // Aceitar deviceId/mikId via query parameter (para buscar pedidos do mesmo dispositivo)
+    const deviceIdParam = req.nextUrl.searchParams.get("deviceId");
+    const mikIdParam = req.nextUrl.searchParams.get("mikId");
+
     if (!ip || ip === "unknown" || ip === "127.0.0.1") {
       return NextResponse.json({ 
         temAcesso: false, 
@@ -86,12 +90,23 @@ export async function GET(req) {
       whereClause.OR.push({ code: pedidoCode });
     }
 
+    // Se tiver deviceId ou mikId, buscar pedidos pagos do mesmo dispositivo
+    // Isso ajuda quando IP/MAC mudam mas o dispositivo é o mesmo
+    if (deviceIdParam || mikIdParam) {
+      const deviceWhere = {};
+      if (deviceIdParam) {
+        deviceWhere.deviceId = deviceIdParam;
+      }
+      if (mikIdParam) {
+        deviceWhere.device = { mikId: mikIdParam };
+      }
+      whereClause.OR.push(deviceWhere);
+    }
+
     // Se o IP for da subnet 192.168.88.X, buscar também por outros IPs na mesma subnet
     // Isso ajuda quando o IP muda mas ainda está na mesma rede
-    if (ip && ip.startsWith("192.168.88.")) {
-      // Buscar pedidos pagos recentes com IPs na mesma subnet
-      // Mas limitar a busca para não pegar pedidos de outros clientes
-      // Vamos buscar apenas se não tiver encontrado por outras formas
+    // IMPORTANTE: Esta busca é mais ampla, então só fazemos se não tiver encontrado por outras formas
+    if (ip && ip.startsWith("192.168.88.") && !pedidoCode && !deviceIdParam && !mikIdParam) {
       whereClause.OR.push({
         ip: {
           startsWith: "192.168.88.",
