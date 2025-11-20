@@ -183,6 +183,74 @@ export async function POST(req) {
       mk = { ok: true, note: 'sem ip/mac válidos; apenas status atualizado' };
     }
 
+    // Criar ou atualizar sessão ativa após liberar acesso com sucesso
+    // (mesmo comportamento do webhook)
+    let sessaoId = null;
+    if (mk.ok && (ipFinal || macFinal)) {
+      try {
+        // Buscar roteador pelo host/user se disponível
+        let roteadorId = null;
+        if (routerInfo.router?.host) {
+          const roteador = await prisma.roteador.findFirst({
+            where: {
+              ipLan: routerInfo.router.host,
+              usuario: routerInfo.router.user,
+            },
+          });
+          if (roteador) {
+            roteadorId = roteador.id;
+          }
+        }
+
+        // Calcular expiração (120 minutos padrão)
+        const minutos = 120;
+        const now = new Date();
+        const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
+
+        // Verificar se já existe sessão ativa para este pedido
+        const sessaoExistente = await prisma.sessaoAtiva.findFirst({
+          where: {
+            pedidoId: pedido.id,
+            ativo: true,
+          },
+        });
+
+        if (sessaoExistente) {
+          // Atualizar sessão existente com novo IP/MAC
+          await prisma.sessaoAtiva.update({
+            where: { id: sessaoExistente.id },
+            data: {
+              ipCliente: ipFinal || sessaoExistente.ipCliente,
+              macCliente: macFinal || sessaoExistente.macCliente,
+              expiraEm, // Renovar expiração
+              roteadorId: roteadorId || sessaoExistente.roteadorId,
+            },
+          });
+          sessaoId = sessaoExistente.id;
+          console.log('[liberar-acesso] ✅ Sessão ativa atualizada:', sessaoId);
+        } else {
+          // Criar nova sessão ativa
+          const sessao = await prisma.sessaoAtiva.create({
+            data: {
+              ipCliente: ipFinal || `sem-ip-${pedido.id}`.slice(0, 255),
+              macCliente: macFinal || null,
+              plano: pedido.description || 'Acesso',
+              inicioEm: now,
+              expiraEm,
+              ativo: true,
+              pedidoId: pedido.id,
+              roteadorId,
+            },
+          });
+          sessaoId = sessao.id;
+          console.log('[liberar-acesso] ✅ Sessão ativa criada:', sessaoId);
+        }
+      } catch (sessaoErr) {
+        console.error('[liberar-acesso] Erro ao criar/atualizar sessão ativa (não crítico):', sessaoErr);
+        // Não falha a liberação se não conseguir criar sessão
+      }
+    }
+
     return json(
       {
         ok: mk.ok,
@@ -190,6 +258,7 @@ export async function POST(req) {
         code: pedido.code,
         status: pedido.status,
         mikrotik: mk,
+        sessaoId,
         redirect: linkOrig || null,
       },
       200,
