@@ -44,16 +44,51 @@ async function main() {
     const pedidoCode = `CORTESIA-${Date.now()}`;
     console.log('📝 Criando pedido temporário de cortesia...');
     
-    // Buscar dispositivo se deviceId/mikId fornecido
+    // Buscar dispositivo se deviceId/mikId fornecido, ou tentar encontrar pelo IP
     let deviceIdFinal = DEVICE_ID;
+    let mikIdFinal = MIK_ID;
+    
     if (!deviceIdFinal && MIK_ID) {
       const device = await prisma.dispositivo.findUnique({
         where: { mikId: MIK_ID },
-        select: { id: true },
+        select: { id: true, mikId: true },
       });
       if (device) {
         deviceIdFinal = device.id;
-        console.log(`   ✅ Dispositivo encontrado: ${deviceIdFinal}`);
+        mikIdFinal = device.mikId;
+        console.log(`   ✅ Dispositivo encontrado: ${deviceIdFinal} (${mikIdFinal})`);
+      }
+    }
+    
+    // Se não encontrou, tentar buscar pelo IP (subnet)
+    if (!deviceIdFinal && IP) {
+      const subnet = IP.substring(0, IP.lastIndexOf('.'));
+      const devices = await prisma.dispositivo.findMany({
+        where: {
+          OR: [
+            { ip: { startsWith: subnet } },
+            { mikrotikHost: { startsWith: subnet } },
+          ],
+        },
+        select: { id: true, mikId: true, ip: true },
+      });
+      
+      if (devices.length === 1) {
+        deviceIdFinal = devices[0].id;
+        mikIdFinal = devices[0].mikId;
+        console.log(`   ✅ Dispositivo encontrado pelo IP (subnet ${subnet}): ${deviceIdFinal} (${mikIdFinal})`);
+      } else if (devices.length > 1) {
+        // Escolher o que tem mikrotikHost correspondente
+        const deviceByHost = devices.find(d => d.mikrotikHost && d.mikrotikHost.startsWith(subnet));
+        if (deviceByHost) {
+          deviceIdFinal = deviceByHost.id;
+          mikIdFinal = deviceByHost.mikId;
+          console.log(`   ✅ Dispositivo escolhido entre múltiplos: ${deviceIdFinal} (${mikIdFinal})`);
+        } else {
+          deviceIdFinal = devices[0].id;
+          mikIdFinal = devices[0].mikId;
+          console.log(`   ✅ Dispositivo escolhido (primeiro): ${deviceIdFinal} (${mikIdFinal})`);
+        }
       }
     }
 
@@ -84,8 +119,13 @@ async function main() {
       mac: MAC,
     };
 
-    if (DEVICE_ID) body.deviceId = DEVICE_ID;
-    if (MIK_ID) body.mikId = MIK_ID;
+    // Sempre passar deviceId/mikId se encontrados
+    if (deviceIdFinal) body.deviceId = deviceIdFinal;
+    if (mikIdFinal) body.mikId = mikIdFinal;
+    
+    if (!deviceIdFinal && !mikIdFinal) {
+      console.log('   ⚠️  Aviso: Dispositivo não encontrado. Tentando liberar sem deviceId/mikId...');
+    }
 
     console.log('📡 Chamando API /api/liberar-acesso...');
     const response = await fetch('http://localhost:3000/api/liberar-acesso', {
