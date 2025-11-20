@@ -13,5 +13,5 @@ echo "   Pedido: $PEDIDO"
 echo ""
 
 cd /opt/lopesul-dashboard
-node liberar-cliente-manual.js "$IP" "$MAC" "$PEDIDO"
+node liberar-cliente-simples.js "$IP" "$MAC" "$PEDIDO"
 
