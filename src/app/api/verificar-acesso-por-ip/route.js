@@ -187,6 +187,70 @@ export async function GET(req) {
           });
           
           console.log('[verificar-acesso-por-ip] ✅ Acesso liberado automaticamente para novo IP/MAC');
+          
+          // Criar ou atualizar sessão ativa no banco (para aparecer no painel)
+          try {
+            const macFinal = mac || pedidoPago.deviceMac;
+            
+            // Buscar roteador se disponível
+            let roteadorId = null;
+            if (routerInfo?.router?.host) {
+              const roteador = await prisma.roteador.findFirst({
+                where: {
+                  ipLan: routerInfo.router.host,
+                  usuario: routerInfo.router.user,
+                },
+              });
+              if (roteador) {
+                roteadorId = roteador.id;
+              }
+            }
+            
+            // Calcular expiração (120 minutos padrão)
+            const minutos = 120;
+            const now = new Date();
+            const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
+            
+            // Verificar se já existe sessão ativa para este pedido
+            const sessaoExistente = await prisma.sessaoAtiva.findFirst({
+              where: {
+                pedidoId: pedidoPago.id,
+                ativo: true,
+              },
+            });
+            
+            if (sessaoExistente) {
+              // Atualizar sessão existente com novo IP/MAC
+              await prisma.sessaoAtiva.update({
+                where: { id: sessaoExistente.id },
+                data: {
+                  ipCliente: ip || sessaoExistente.ipCliente,
+                  macCliente: macFinal || sessaoExistente.macCliente,
+                  expiraEm, // Renovar expiração
+                  roteadorId: roteadorId || sessaoExistente.roteadorId,
+                },
+              });
+              console.log('[verificar-acesso-por-ip] ✅ Sessão ativa atualizada:', sessaoExistente.id);
+            } else {
+              // Criar nova sessão ativa
+              const sessao = await prisma.sessaoAtiva.create({
+                data: {
+                  ipCliente: ip || `sem-ip-${pedidoPago.id}`.slice(0, 255),
+                  macCliente: macFinal || null,
+                  plano: pedidoPago.description || 'Acesso',
+                  inicioEm: now,
+                  expiraEm,
+                  ativo: true,
+                  pedidoId: pedidoPago.id,
+                  roteadorId,
+                },
+              });
+              console.log('[verificar-acesso-por-ip] ✅ Sessão ativa criada:', sessao.id);
+            }
+          } catch (sessaoErr) {
+            console.error('[verificar-acesso-por-ip] Erro ao criar/atualizar sessão ativa (não crítico):', sessaoErr);
+            // Continua mesmo se falhar
+          }
         } catch (err) {
           console.error('[verificar-acesso-por-ip] Erro ao liberar acesso automaticamente:', err.message);
           // Continua mesmo se falhar, retorna que tem acesso
