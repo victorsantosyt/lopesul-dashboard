@@ -3,7 +3,7 @@
 // Uso: node liberar-cliente-manual.js <IP> <MAC> [pedidoCode]
 import { PrismaClient } from '@prisma/client';
 import { liberarAcesso } from './src/lib/mikrotik.js';
-import { requireDeviceRouter } from './src/lib/device-router.js';
+import { requireDeviceRouter } from './src/lib/device-router.ts';
 
 const prisma = new PrismaClient();
 
