@@ -6,7 +6,10 @@ echo "💾 Fazendo backup do banco de dados..."
 
 # Carregar variáveis de ambiente
 if [ -f .env ]; then
-  export $(cat .env | grep -v '^#' | xargs)
+  # Carregar apenas linhas que não são comentários e têm = (variáveis)
+  set -a
+  source <(grep -v '^#' .env | grep '=' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  set +a
 fi
 
 # Verificar se DATABASE_URL existe
