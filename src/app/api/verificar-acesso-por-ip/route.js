@@ -55,6 +55,7 @@ export async function GET(req) {
     const tresHorasAtras = new Date(Date.now() - 3 * 60 * 60 * 1000);
     
     // Buscar por IP OU por MAC (se fornecido)
+    // IMPORTANTE: Buscar também por IPs na mesma subnet (192.168.88.X) para casos de IP mudando
     const whereClause = {
       status: "PAID",
       createdAt: {
@@ -65,9 +66,21 @@ export async function GET(req) {
       ],
     };
 
-    // Se tiver MAC, também buscar por MAC
+    // Se tiver MAC, também buscar por MAC (mesmo que IP tenha mudado)
     if (mac) {
-      whereClause.OR.push({ deviceMac: mac });
+      whereClause.OR.push({ deviceMac: mac.toUpperCase() });
+    }
+    
+    // Se o IP for da subnet 192.168.88.X, também buscar por outros IPs na mesma subnet
+    // Isso ajuda quando o IP muda mas o MAC original está no pedido
+    if (ip && ip.startsWith("192.168.88.")) {
+      // Buscar pedidos pagos recentes na mesma subnet (últimas 3h)
+      // Isso vai pegar pedidos mesmo que o IP tenha mudado
+      whereClause.OR.push({
+        ip: {
+          startsWith: "192.168.88.",
+        },
+      });
     }
 
     const pedidoPago = await prisma.pedido.findFirst({
