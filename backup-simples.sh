@@ -10,6 +10,9 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
+# Remover parâmetros de query que pg_dump não aceita (como ?schema=public)
+DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/?.*$//')
+
 # Criar diretório de backup
 mkdir -p /backup
 
