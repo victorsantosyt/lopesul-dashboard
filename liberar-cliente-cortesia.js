@@ -62,6 +62,7 @@ async function main() {
         code: pedidoCode,
         status: 'PAID',
         amount: 0, // Cortesia = R$ 0,00
+        method: 'PIX', // Método de pagamento (obrigatório)
         description: 'Acesso de Cortesia',
         ip: IP,
         deviceMac: MAC,
