@@ -227,13 +227,20 @@
             console.log('[Portal] PedidoCode encontrado (cookie/localStorage):', pedidoCode);
           }
           
-          // Verificar se há pedido pago recente ou sessão ativa para aquele IP, MAC ou pedidoCode
+          // Verificar se há pedido pago recente ou sessão ativa para aquele IP, MAC, pedidoCode ou deviceId/mikId
           const params = new URLSearchParams({ ip: encodeURIComponent(ip) });
           if (mac) {
             params.set('mac', encodeURIComponent(mac));
           }
           if (pedidoCode) {
             params.set('pedidoCode', encodeURIComponent(pedidoCode));
+          }
+          // Incluir deviceId/mikId para buscar pedidos do mesmo dispositivo mesmo quando IP/MAC mudam
+          if (deviceId) {
+            params.set('deviceId', encodeURIComponent(deviceId));
+          }
+          if (mikId) {
+            params.set('mikId', encodeURIComponent(mikId));
           }
           const verificarRes = await fetch(`/api/verificar-acesso-por-ip?${params.toString()}`);
           const verificarData = await verificarRes.json();
