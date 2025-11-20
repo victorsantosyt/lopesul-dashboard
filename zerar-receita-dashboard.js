@@ -19,11 +19,15 @@ const prisma = new PrismaClient();
 
 async function main() {
   const args = process.argv.slice(2);
-  const dataParam = args.find(arg => arg.startsWith('--data='))?.split('=')[1];
+  // Data padrão: 20/11/2025 (hoje) - manter apenas pedidos a partir de hoje
+  const dataParam = args.find(arg => arg.startsWith('--data='))?.split('=')[1] || '2025-11-20';
   const todos = args.includes('--todos');
   const marcarExpired = args.includes('--marcar-expired');
 
-  if (!dataParam && !todos) {
+  // Se --todos foi especificado, ignora data padrão
+  if (todos) {
+    // Continua com --todos
+  } else if (!dataParam) {
     console.log('❌ Erro: Especifique uma opção:');
     console.log('   --data=YYYY-MM-DD  (deleta/marca pedidos antes desta data)');
     console.log('   --todos             (deleta TODOS os pedidos pagos - PERIGOSO!)');
