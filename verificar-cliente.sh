@@ -12,8 +12,8 @@ echo ""
 echo "📊 Verificando no banco de dados..."
 cd /opt/lopesul-dashboard
 
-# Criar script temporário
-cat > /tmp/verificar-cliente-temp.mjs << 'EOFSCRIPT'
+# Criar script temporário no diretório do projeto
+cat > verificar-cliente-temp.mjs << 'EOFSCRIPT'
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -72,7 +72,8 @@ async function main() {
 main().catch(console.error);
 EOFSCRIPT
 
-node /tmp/verificar-cliente-temp.mjs "$IP" "$MAC"
+node verificar-cliente-temp.mjs "$IP" "$MAC"
+rm -f verificar-cliente-temp.mjs
 
 echo ""
 echo "📡 Verificando no Mikrotik (10.200.200.7)..."
