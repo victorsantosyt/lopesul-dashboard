@@ -173,116 +173,123 @@ export async function GET(req) {
         // 1. IP ou MAC mudaram OU pedido não tinha IP/MAC inicial E
         // 2. Não há sessão ativa para este IP
         if ((ipMudou || macMudou || pedidoSemIpMac) && !sessaoAtivaPorIp) {
-        console.log('[verificar-acesso-por-ip] 🔄 Liberando acesso automaticamente...', {
-          motivo: ipMudou ? 'IP mudou' : macMudou ? 'MAC mudou' : 'Pedido sem IP/MAC inicial',
-          ipAnterior: pedidoPago.ip || 'N/A',
-          ipNovo: ip,
-          macAnterior: pedidoPago.deviceMac || 'N/A',
-          macNovo: mac || 'N/A',
-        });
-        
-        try {
-          // Importar liberarAcesso dinamicamente para evitar dependência circular
-          const { liberarAcesso } = await import("@/lib/mikrotik");
-          
-          // Buscar informações do dispositivo para o modo inteligente
-          const { requireDeviceRouter } = await import("@/lib/device-router");
-          let routerInfo = null;
-          
-          try {
-            routerInfo = await requireDeviceRouter({
-              deviceId: pedidoPago.deviceId,
-              mikId: pedidoPago.device?.mikId || pedidoPago.deviceIdentifier,
-            });
-          } catch (err) {
-            console.warn('[verificar-acesso-por-ip] Dispositivo não encontrado, usando modo direto:', err.message);
-          }
-          
-          // Liberar acesso com o novo IP/MAC
-          await liberarAcesso({
-            ip,
-            mac: mac || pedidoPago.deviceMac, // Usa MAC atual ou do pedido
-            orderId: pedidoPago.code,
-            pedidoId: pedidoPago.id,
-            deviceId: pedidoPago.deviceId,
-            mikId: routerInfo?.device?.mikId,
-            comment: `auto-liberado:${pedidoPago.code}`,
-            router: routerInfo?.router,
+          console.log('[verificar-acesso-por-ip] 🔄 Liberando acesso automaticamente...', {
+            motivo: ipMudou ? 'IP mudou' : macMudou ? 'MAC mudou' : 'Pedido sem IP/MAC inicial',
+            ipAnterior: pedidoPago.ip || 'N/A',
+            ipNovo: ip,
+            macAnterior: pedidoPago.deviceMac || 'N/A',
+            macNovo: mac || 'N/A',
           });
           
-          console.log('[verificar-acesso-por-ip] ✅ Acesso liberado automaticamente para novo IP/MAC');
-          
-          // Criar ou atualizar sessão ativa no banco (para aparecer no painel)
           try {
-            const macFinal = mac || pedidoPago.deviceMac;
+            // Importar liberarAcesso dinamicamente para evitar dependência circular
+            const { liberarAcesso } = await import("@/lib/mikrotik");
             
-            // Buscar roteador se disponível
-            let roteadorId = null;
-            if (routerInfo?.router?.host) {
-              const roteador = await prisma.roteador.findFirst({
-                where: {
-                  ipLan: routerInfo.router.host,
-                  usuario: routerInfo.router.user,
-                },
+            // Buscar informações do dispositivo para o modo inteligente
+            const { requireDeviceRouter } = await import("@/lib/device-router");
+            let routerInfo = null;
+            
+            try {
+              routerInfo = await requireDeviceRouter({
+                deviceId: pedidoPago.deviceId,
+                mikId: pedidoPago.device?.mikId || pedidoPago.deviceIdentifier,
               });
-              if (roteador) {
-                roteadorId = roteador.id;
-              }
+            } catch (err) {
+              console.warn('[verificar-acesso-por-ip] Dispositivo não encontrado, usando modo direto:', err.message);
             }
             
-            // Calcular expiração (120 minutos padrão)
-            const minutos = 120;
-            const now = new Date();
-            const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
-            
-            // Verificar se já existe sessão ativa para este pedido
-            const sessaoExistente = await prisma.sessaoAtiva.findFirst({
-              where: {
-                pedidoId: pedidoPago.id,
-                ativo: true,
-              },
+            // Liberar acesso com o novo IP/MAC
+            await liberarAcesso({
+              ip,
+              mac: mac || pedidoPago.deviceMac, // Usa MAC atual ou do pedido
+              orderId: pedidoPago.code,
+              pedidoId: pedidoPago.id,
+              deviceId: pedidoPago.deviceId,
+              mikId: routerInfo?.device?.mikId,
+              comment: `auto-liberado:${pedidoPago.code}`,
+              router: routerInfo?.router,
             });
             
-            if (sessaoExistente) {
-              // Atualizar sessão existente com novo IP/MAC
-              await prisma.sessaoAtiva.update({
-                where: { id: sessaoExistente.id },
-                data: {
-                  ipCliente: ip || sessaoExistente.ipCliente,
-                  macCliente: macFinal || sessaoExistente.macCliente,
-                  expiraEm, // Renovar expiração
-                  roteadorId: roteadorId || sessaoExistente.roteadorId,
-                },
-              });
-              console.log('[verificar-acesso-por-ip] ✅ Sessão ativa atualizada:', sessaoExistente.id);
-            } else {
-              // Criar nova sessão ativa
-              const sessao = await prisma.sessaoAtiva.create({
-                data: {
-                  ipCliente: ip || `sem-ip-${pedidoPago.id}`.slice(0, 255),
-                  macCliente: macFinal || null,
-                  plano: pedidoPago.description || 'Acesso',
-                  inicioEm: now,
-                  expiraEm,
-                  ativo: true,
+            console.log('[verificar-acesso-por-ip] ✅ Acesso liberado automaticamente para novo IP/MAC');
+            
+            // Criar ou atualizar sessão ativa no banco (para aparecer no painel)
+            try {
+              const macFinal = mac || pedidoPago.deviceMac;
+              
+              // Buscar roteador se disponível
+              let roteadorId = null;
+              if (routerInfo?.router?.host) {
+                const roteador = await prisma.roteador.findFirst({
+                  where: {
+                    ipLan: routerInfo.router.host,
+                    usuario: routerInfo.router.user,
+                  },
+                });
+                if (roteador) {
+                  roteadorId = roteador.id;
+                }
+              }
+              
+              // Calcular expiração (120 minutos padrão)
+              const minutos = 120;
+              const now = new Date();
+              const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
+              
+              // Verificar se já existe sessão ativa para este pedido
+              const sessaoExistente = await prisma.sessaoAtiva.findFirst({
+                where: {
                   pedidoId: pedidoPago.id,
-                  roteadorId,
+                  ativo: true,
                 },
               });
-              console.log('[verificar-acesso-por-ip] ✅ Sessão ativa criada:', sessao.id);
+              
+              if (sessaoExistente) {
+                // Atualizar sessão existente com novo IP/MAC
+                await prisma.sessaoAtiva.update({
+                  where: { id: sessaoExistente.id },
+                  data: {
+                    ipCliente: ip || sessaoExistente.ipCliente,
+                    macCliente: macFinal || sessaoExistente.macCliente,
+                    expiraEm, // Renovar expiração
+                    roteadorId: roteadorId || sessaoExistente.roteadorId,
+                  },
+                });
+                console.log('[verificar-acesso-por-ip] ✅ Sessão ativa atualizada:', sessaoExistente.id);
+              } else {
+                // Criar nova sessão ativa
+                const sessao = await prisma.sessaoAtiva.create({
+                  data: {
+                    ipCliente: ip || `sem-ip-${pedidoPago.id}`.slice(0, 255),
+                    macCliente: macFinal || null,
+                    plano: pedidoPago.description || 'Acesso',
+                    inicioEm: now,
+                    expiraEm,
+                    ativo: true,
+                    pedidoId: pedidoPago.id,
+                    roteadorId,
+                  },
+                });
+                console.log('[verificar-acesso-por-ip] ✅ Sessão ativa criada:', sessao.id);
+              }
+            } catch (sessaoErr) {
+              console.error('[verificar-acesso-por-ip] Erro ao criar/atualizar sessão ativa (não crítico):', sessaoErr);
+              // Continua mesmo se falhar
             }
-          } catch (sessaoErr) {
-            console.error('[verificar-acesso-por-ip] Erro ao criar/atualizar sessão ativa (não crítico):', sessaoErr);
-            // Continua mesmo se falhar
+          } catch (err) {
+            console.error('[verificar-acesso-por-ip] Erro ao liberar acesso automaticamente:', err.message);
+            // Continua mesmo se falhar, retorna que tem acesso
           }
-        } catch (err) {
-          console.error('[verificar-acesso-por-ip] Erro ao liberar acesso automaticamente:', err.message);
-          // Continua mesmo se falhar, retorna que tem acesso
+        } else {
+          console.log('[verificar-acesso-por-ip] ⏭️ Pulando liberação: sessão ativa já existe para este IP');
         }
       }
 
       // Verificar se há sessão ativa
       const sessaoAtiva = pedidoPago.SessaoAtiva[0];
+      
+      // Verificar se houve mudança de IP/MAC para o retorno
+      const ipMudou = pedidoPago.ip && pedidoPago.ip !== ip;
+      const macMudou = pedidoPago.deviceMac && mac && pedidoPago.deviceMac.toUpperCase() !== mac.toUpperCase();
       
       return NextResponse.json({
         temAcesso: true,
