@@ -337,6 +337,7 @@
       document.getElementById('btn-voltar').addEventListener('click', voltarEscolha);
 
       function voltarEscolha() {
+        emCheckout = false; // Resetar flag ao voltar para permitir verificação novamente
         limparFluxo();
         elCheckout.style.display = 'none';
         elEscolha.style.display  = 'block';
