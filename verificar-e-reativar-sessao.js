@@ -157,9 +157,15 @@ async function main() {
       console.log('');
     }
 
-    if (!ativa) {
+    // Sempre reativar se expirou ou está prestes a expirar (menos de 5 minutos)
+    const minutosRestantesAteExpirar = expirada ? 0 : minutosRestantes;
+    const precisaReativar = !ativa || expirada || (minutosRestantesAteExpirar < 5 && minutosRestantesAteExpirar > 0);
+    
+    if (precisaReativar) {
       if (expirada) {
         console.log('⏰ Sessão expirou. Reativando com novo tempo...');
+      } else if (minutosRestantesAteExpirar < 5) {
+        console.log(`⏰ Sessão está prestes a expirar (${minutosRestantesAteExpirar} min). Reativando...`);
       } else {
         console.log('💡 Sessão não está ativa no banco. Reativando...');
       }
@@ -183,6 +189,7 @@ async function main() {
         console.log(`   Status: ✅ ATIVA`);
         console.log('');
         console.log('💡 A sessão deve aparecer como "Ativa" na página de acessos agora.');
+        console.log('   Aguarde alguns segundos e recarregue a página.');
       } catch (err) {
         console.error('❌ Erro ao reativar sessão:', err.message);
         console.error(err);
@@ -190,6 +197,11 @@ async function main() {
     } else {
       console.log('✅ Sessão já está ativa!');
       console.log(`   Expira em: ${minutosRestantes} minutos`);
+      console.log('');
+      if (minutosRestantes < 10) {
+        console.log('⚠️  Sessão está prestes a expirar. Deseja reativar mesmo assim?');
+        console.log('   Execute novamente o script para reativar.');
+      }
     }
 
   } catch (error) {
