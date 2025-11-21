@@ -157,9 +157,10 @@ async function main() {
       console.log('');
     }
 
-    // Sempre reativar se expirou ou está prestes a expirar (menos de 5 minutos)
+    // Sempre reativar se expirou ou está prestes a expirar (menos de 30 minutos)
+    // Isso garante que a sessão tenha tempo suficiente e evita problemas de timezone
     const minutosRestantesAteExpirar = expirada ? 0 : minutosRestantes;
-    const precisaReativar = !ativa || expirada || (minutosRestantesAteExpirar < 5 && minutosRestantesAteExpirar > 0);
+    const precisaReativar = !ativa || expirada || (minutosRestantesAteExpirar < 30 && minutosRestantesAteExpirar >= 0);
     
     if (precisaReativar) {
       if (expirada) {
