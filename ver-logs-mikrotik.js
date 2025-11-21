@@ -78,20 +78,34 @@ async function main() {
     // Buscar dispositivo/roteador
     let roteador = null;
     
-    // Tentar buscar por mikId
+    // Tentar buscar dispositivo por mikId
     const dispositivo = await prisma.dispositivo.findFirst({
       where: {
         mikId: { equals: mikIdOrIp, mode: 'insensitive' },
       },
       include: {
-        roteador: true,
+        frota: {
+          include: {
+            roteador: true,
+          },
+        },
       },
     });
 
-    if (dispositivo?.roteador) {
-      roteador = dispositivo.roteador;
-    } else {
-      // Tentar buscar roteador diretamente por IP ou nome
+    // Se encontrou dispositivo e a frota tem roteador, usar esse
+    if (dispositivo?.frota?.roteador) {
+      roteador = dispositivo.frota.roteador;
+    } else if (dispositivo?.mikrotikHost) {
+      // Se o dispositivo tem mikrotikHost, buscar roteador por IP
+      roteador = await prisma.roteador.findFirst({
+        where: {
+          ipLan: dispositivo.mikrotikHost,
+        },
+      });
+    }
+    
+    // Se ainda não encontrou, tentar buscar roteador diretamente por IP ou nome
+    if (!roteador) {
       roteador = await prisma.roteador.findFirst({
         where: {
           OR: [
