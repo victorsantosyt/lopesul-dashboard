@@ -63,30 +63,49 @@ function extractPix(order) {
 export async function GET(req) {
   try {
     const url = new URL(req.url);
-    const limit = clamp(url.searchParams.get('limit') ?? 10, 1, 100);
+    const limit = clamp(url.searchParams.get('limit') ?? 100, 1, 500); // Aumentado para 100 padrão, max 500
     const status = mapPaymentStatus(url.searchParams.get('status'));
 
     const fromStr = url.searchParams.get('from'); // YYYY-MM-DD
     const toStr   = url.searchParams.get('to');   // YYYY-MM-DD
+    const q = url.searchParams.get('q')?.trim();
 
+    // Construir where corretamente combinando AND e OR
     const where = {};
-    if (status) where.status = status;
-
     const AND = [];
-    if (fromStr) AND.push({ createdAt: { gte: new Date(`${fromStr}T00:00:00.000Z`) } });
-    if (toStr)   AND.push({ createdAt: { lte: new Date(`${toStr}T23:59:59.999Z`) } });
-    if (AND.length) where.AND = AND;
 
-    // Buscar com busca por texto (q) se fornecido
-    if (url.searchParams.get('q')) {
-      const q = url.searchParams.get('q').trim();
-      where.OR = [
+    // Filtro de status
+    if (status) {
+      AND.push({ status });
+    }
+
+    // Filtros de data
+    if (fromStr) {
+      AND.push({ createdAt: { gte: new Date(`${fromStr}T00:00:00.000Z`) } });
+    }
+    if (toStr) {
+      AND.push({ createdAt: { lte: new Date(`${toStr}T23:59:59.999Z`) } });
+    }
+
+    // Busca por texto (OR) - combina com outros filtros via AND
+    if (q) {
+      const searchConditions = [
         { code: { contains: q, mode: 'insensitive' } },
         { description: { contains: q, mode: 'insensitive' } },
         { ip: { contains: q, mode: 'insensitive' } },
         { deviceMac: { contains: q, mode: 'insensitive' } },
         { customerName: { contains: q, mode: 'insensitive' } },
       ];
+      AND.push({ OR: searchConditions });
+    }
+
+    // Aplicar AND se houver condições
+    if (AND.length > 0) {
+      if (AND.length === 1) {
+        Object.assign(where, AND[0]);
+      } else {
+        where.AND = AND;
+      }
     }
 
     const rows = await prisma.pedido.findMany({
@@ -104,9 +123,15 @@ export async function GET(req) {
             ip: true,
           },
         },
-        roteador: {
-          select: {
-            nome: true,
+        SessaoAtiva: {
+          where: { ativo: true },
+          take: 1,
+          include: {
+            roteador: {
+              select: {
+                nome: true,
+              },
+            },
           },
         },
       },
@@ -139,7 +164,7 @@ export async function GET(req) {
         status: statusPt,
         mac: p.deviceMac || null,
         ip: p.ip || null,
-        roteador: p.roteador?.nome || p.device?.mikId || null,
+        roteador: p.SessaoAtiva?.[0]?.roteador?.nome || p.device?.mikId || null,
         // Campos adicionais para compatibilidade
         amount: p.amount,
         method: p.method,
