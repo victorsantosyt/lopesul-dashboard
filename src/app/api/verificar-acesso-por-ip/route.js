@@ -150,8 +150,22 @@ export async function GET(req) {
       const ipMudou = pedidoPago.ip && pedidoPago.ip !== ip;
       const macMudou = pedidoPago.deviceMac && mac && pedidoPago.deviceMac.toUpperCase() !== mac.toUpperCase();
       
-      if (ipMudou || macMudou) {
-        console.log('[verificar-acesso-por-ip] 🔄 IP ou MAC mudou, liberando automaticamente...', {
+      // Verificar se já existe sessão ativa para este IP (evita liberar múltiplas vezes)
+      const sessaoAtivaPorIp = await prisma.sessaoAtiva.findFirst({
+        where: {
+          ipCliente: ip,
+          ativo: true,
+          expiraEm: {
+            gte: new Date(),
+          },
+        },
+      });
+      
+      // Só liberar se:
+      // 1. IP ou MAC mudaram E
+      // 2. Não há sessão ativa para este IP (evita tentar liberar múltiplas vezes)
+      if ((ipMudou || macMudou) && !sessaoAtivaPorIp) {
+        console.log('[verificar-acesso-por-ip] 🔄 IP ou MAC mudou e não há sessão ativa, liberando automaticamente...', {
           ipAnterior: pedidoPago.ip,
           ipNovo: ip,
           macAnterior: pedidoPago.deviceMac,
