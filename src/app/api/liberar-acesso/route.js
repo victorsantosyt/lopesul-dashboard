@@ -207,44 +207,36 @@ export async function POST(req) {
         const now = new Date();
         const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
 
-        // Verificar se já existe sessão ativa para este pedido
-        const sessaoExistente = await prisma.sessaoAtiva.findFirst({
+        const ipClienteFinal = ipFinal || `sem-ip-${pedido.id}`.slice(0, 255);
+
+        // Usar upsert para evitar erro de constraint única se já existir sessão com esse IP
+        // (mesmo comportamento do webhook)
+        const sessao = await prisma.sessaoAtiva.upsert({
           where: {
-            pedidoId: pedido.id,
+            ipCliente: ipClienteFinal,
+          },
+          update: {
+            macCliente: macFinal || null,
+            plano: pedido.description || 'Acesso',
+            expiraEm,
             ativo: true,
+            pedidoId: pedido.id,
+            roteadorId: roteadorId || undefined,
+          },
+          create: {
+            ipCliente: ipClienteFinal,
+            macCliente: macFinal || null,
+            plano: pedido.description || 'Acesso',
+            inicioEm: now,
+            expiraEm,
+            ativo: true,
+            pedidoId: pedido.id,
+            roteadorId,
           },
         });
 
-        if (sessaoExistente) {
-          // Atualizar sessão existente com novo IP/MAC
-          await prisma.sessaoAtiva.update({
-            where: { id: sessaoExistente.id },
-            data: {
-              ipCliente: ipFinal || sessaoExistente.ipCliente,
-              macCliente: macFinal || sessaoExistente.macCliente,
-              expiraEm, // Renovar expiração
-              roteadorId: roteadorId || sessaoExistente.roteadorId,
-            },
-          });
-          sessaoId = sessaoExistente.id;
-          console.log('[liberar-acesso] ✅ Sessão ativa atualizada:', sessaoId);
-        } else {
-          // Criar nova sessão ativa
-          const sessao = await prisma.sessaoAtiva.create({
-            data: {
-              ipCliente: ipFinal || `sem-ip-${pedido.id}`.slice(0, 255),
-              macCliente: macFinal || null,
-              plano: pedido.description || 'Acesso',
-              inicioEm: now,
-              expiraEm,
-              ativo: true,
-              pedidoId: pedido.id,
-              roteadorId,
-            },
-          });
-          sessaoId = sessao.id;
-          console.log('[liberar-acesso] ✅ Sessão ativa criada:', sessaoId);
-        }
+        sessaoId = sessao.id;
+        console.log('[liberar-acesso] ✅ Sessão ativa criada/atualizada:', sessaoId);
       } catch (sessaoErr) {
         console.error('[liberar-acesso] Erro ao criar/atualizar sessão ativa (não crítico):', sessaoErr);
         // Não falha a liberação se não conseguir criar sessão
