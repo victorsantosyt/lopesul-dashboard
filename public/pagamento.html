@@ -197,6 +197,12 @@
 
       // VERIFICAÇÃO CRÍTICA: Verificar se cliente já tem acesso (resolve problema de MAC aleatório)
       async function verificarAcessoExistente() {
+        // Não verificar se estiver em processo de checkout
+        if (emCheckout) {
+          console.log('[Portal] Em checkout, pulando verificação de acesso');
+          return false;
+        }
+        
         try {
           // Aguardar um pouco para garantir que IP foi detectado
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -296,7 +302,10 @@
         }
       }
 
-      // Verificar acesso ao carregar a página
+      // Flag para evitar verificação durante checkout
+      let emCheckout = false;
+      
+      // Verificar acesso ao carregar a página (apenas uma vez, se não estiver em checkout)
       verificarAcessoExistente();
 
       let nomeCli = get("nome") || get("name") || "Cliente";
@@ -416,6 +425,7 @@
       }
 
       async function iniciarCheckout({ valor, descricao, minutos }) {
+        emCheckout = true; // Marcar que está em checkout para evitar verificações
         elEscolha.style.display = 'none';
         elCheckout.style.display = 'block';
         tempoLivre = Number(minutos) || 120;
