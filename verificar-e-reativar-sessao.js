@@ -33,28 +33,93 @@ async function main() {
     if (MAC) console.log(`   MAC: ${MAC}`);
     console.log('');
 
-    // Buscar sessão por IP
-    const sessao = await prisma.sessaoAtiva.findFirst({
-      where: {
-        ipCliente: IP,
-        ...(MAC ? { macCliente: MAC } : {}),
-      },
-      include: {
-        pedido: {
-          select: {
-            id: true,
-            code: true,
-            status: true,
-            description: true,
-            amount: true,
+    // Buscar sessão por IP (MAC é opcional)
+    let sessao = null;
+    
+    if (MAC && MAC.length >= 17) {
+      // Buscar por IP e MAC se MAC completo
+      sessao = await prisma.sessaoAtiva.findFirst({
+        where: {
+          ipCliente: IP,
+          macCliente: MAC,
+        },
+        include: {
+          pedido: {
+            select: {
+              id: true,
+              code: true,
+              status: true,
+              description: true,
+              amount: true,
+            },
           },
         },
-      },
-      orderBy: { inicioEm: 'desc' },
-    });
+        orderBy: { inicioEm: 'desc' },
+      });
+    }
+    
+    // Se não encontrou ou MAC incompleto, buscar apenas por IP
+    if (!sessao) {
+      sessao = await prisma.sessaoAtiva.findFirst({
+        where: {
+          ipCliente: IP,
+        },
+        include: {
+          pedido: {
+            select: {
+              id: true,
+              code: true,
+              status: true,
+              description: true,
+              amount: true,
+            },
+          },
+        },
+        orderBy: { inicioEm: 'desc' },
+      });
+    }
 
     if (!sessao) {
       console.log('❌ Sessão não encontrada!');
+      console.log('');
+      console.log('🔍 Buscando pedidos relacionados a este IP...');
+      
+      // Buscar pedidos com este IP
+      const pedidos = await prisma.pedido.findMany({
+        where: {
+          ip: IP,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          code: true,
+          status: true,
+          description: true,
+          amount: true,
+          ip: true,
+          deviceMac: true,
+          createdAt: true,
+        },
+      });
+      
+      if (pedidos.length > 0) {
+        console.log(`✅ ${pedidos.length} pedido(s) encontrado(s) com este IP:`);
+        pedidos.forEach((p, idx) => {
+          console.log(`\n   Pedido ${idx + 1}:`);
+          console.log(`   ID: ${p.id}`);
+          console.log(`   Code: ${p.code}`);
+          console.log(`   Status: ${p.status}`);
+          console.log(`   IP: ${p.ip}`);
+          console.log(`   MAC: ${p.deviceMac || 'N/A'}`);
+          console.log(`   Criado: ${p.createdAt.toISOString()}`);
+        });
+        console.log('');
+        console.log('💡 Nenhuma sessão ativa encontrada. Você pode criar uma sessão usando:');
+        console.log(`   node verificar-sessao-cortesia.js ${pedidos[0].code}`);
+      } else {
+        console.log('❌ Nenhum pedido encontrado com este IP.');
+      }
       return;
     }
 
