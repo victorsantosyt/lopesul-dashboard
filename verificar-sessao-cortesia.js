@@ -87,6 +87,54 @@ async function main() {
         console.log(`   MAC: ${sessao.macCliente || 'N/A'} (esperado: ${pedido.deviceMac || 'N/A'})`);
       });
       console.log('\n💡 Criando/atualizando sessão com IP/MAC corretos...');
+      
+      // Verificar se já existe sessão com este IP (pode ser de outro pedido)
+      if (sessaoPorIp && sessaoPorIp.pedidoId !== pedido.id) {
+        console.log(`⚠️  Já existe uma sessão para o IP ${ipClienteFinal} de outro pedido:`);
+        console.log(`   Sessão ID: ${sessaoPorIp.id}`);
+        console.log(`   Pedido ID: ${sessaoPorIp.pedidoId} (atual: ${pedido.id})`);
+        console.log(`   MAC: ${sessaoPorIp.macCliente || 'N/A'}`);
+        console.log('');
+        console.log('🔄 Atualizando sessão existente para este pedido...');
+      }
+      
+      // Criar/atualizar sessão manualmente
+      const minutos = 120; // 2 horas
+      const now = new Date();
+      const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
+
+      try {
+        const sessao = await prisma.sessaoAtiva.upsert({
+          where: {
+            ipCliente: ipClienteFinal,
+          },
+          update: {
+            macCliente: pedido.deviceMac || null,
+            plano: pedido.description || 'Acesso de Cortesia',
+            expiraEm,
+            ativo: true,
+            pedidoId: pedido.id, // Atualizar para este pedido
+          },
+          create: {
+            ipCliente: ipClienteFinal,
+            macCliente: pedido.deviceMac || null,
+            plano: pedido.description || 'Acesso de Cortesia',
+            inicioEm: now,
+            expiraEm,
+            ativo: true,
+            pedidoId: pedido.id,
+          },
+        });
+
+        console.log('✅ Sessão criada/atualizada com sucesso!');
+        console.log(`   Sessão ID: ${sessao.id}`);
+        console.log(`   IP: ${sessao.ipCliente}`);
+        console.log(`   MAC: ${sessao.macCliente || 'N/A'}`);
+        console.log(`   Expira: ${sessao.expiraEm.toISOString()}`);
+      } catch (err) {
+        console.error('❌ Erro ao criar sessão:', err.message);
+        console.error(err);
+      }
     } else {
       console.log('❌ Nenhuma sessão encontrada para este pedido!');
       console.log('');
