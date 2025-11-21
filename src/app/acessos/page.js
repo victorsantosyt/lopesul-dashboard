@@ -70,25 +70,39 @@ export default function AcessosPage() {
 
       if (Array.isArray(data)) {
         const nowLocal = new Date();
+        const nowTimestamp = nowLocal.getTime(); // Usar timestamp para evitar problemas de timezone
         const mapped = data.map((s) => {
           const inicio = s.inicioEm ? new Date(s.inicioEm) : null;
           const expira = s.expiraEm ? new Date(s.expiraEm) : null;
-          const ativo = !!s.ativo && (!expira || expira > nowLocal);
+          // Usar timestamp para comparação precisa (evita problemas de timezone)
+          const expiraTimestamp = expira ? expira.getTime() : null;
+          const ativo = !!s.ativo && (!expiraTimestamp || expiraTimestamp > nowTimestamp);
           const tempoMin = inicio ? diffMin(nowLocal, inicio) : null;
+          const status = ativo ? "Ativo" : (expiraTimestamp && expiraTimestamp <= nowTimestamp ? "Expirado" : "Inativo");
+          
+          // Debug para sessão específica
+          if (s.ipCliente === '192.168.88.94') {
+            console.log('[AcessosPage] Debug sessão 192.168.88.94:', {
+              ativoBanco: s.ativo,
+              expiraEm: s.expiraEm,
+              expiraTimestamp,
+              nowTimestamp,
+              diff: expiraTimestamp ? expiraTimestamp - nowTimestamp : null,
+              minutosRestantes: expiraTimestamp ? Math.floor((expiraTimestamp - nowTimestamp) / 60000) : null,
+              ativoCalculado: ativo,
+              status,
+            });
+          }
+          
           return {
             id: s.id,
             nome: s.nome || s.macCliente || s.ipCliente || "—",
             ip: `${s.ipCliente || "—"}${s.macCliente ? ` / ${s.macCliente}` : ""}`,
             plano: s.plano || "—",
             tempo: ativo && tempoMin != null ? fmtTempo(tempoMin) : "—",
-            status: ativo ? "Ativo" : (expira && expira <= nowLocal ? "Expirado" : "Inativo"),
+            status,
           };
         });
-        // Debug: log se encontrar a sessão específica
-        const sessaoDebug = mapped.find(r => r.ip.includes('192.168.88.94'));
-        if (sessaoDebug) {
-          console.log('[AcessosPage] Sessão encontrada:', sessaoDebug);
-        }
         setRows(mapped);
         setLastUpdated(new Date());
       } else {
