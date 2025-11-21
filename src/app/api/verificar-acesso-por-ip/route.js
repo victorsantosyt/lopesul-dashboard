@@ -146,10 +146,6 @@ export async function GET(req) {
         macAtual: mac,
       });
 
-      // Se o IP ou MAC mudaram, liberar automaticamente o novo IP/MAC
-      const ipMudou = pedidoPago.ip && pedidoPago.ip !== ip;
-      const macMudou = pedidoPago.deviceMac && mac && pedidoPago.deviceMac.toUpperCase() !== mac.toUpperCase();
-      
       // Verificar se já existe sessão ativa para este IP (evita liberar múltiplas vezes)
       const sessaoAtivaPorIp = await prisma.sessaoAtiva.findFirst({
         where: {
@@ -161,15 +157,28 @@ export async function GET(req) {
         },
       });
       
-      // Só liberar se:
-      // 1. IP ou MAC mudaram E
-      // 2. Não há sessão ativa para este IP (evita tentar liberar múltiplas vezes)
-      if ((ipMudou || macMudou) && !sessaoAtivaPorIp) {
-        console.log('[verificar-acesso-por-ip] 🔄 IP ou MAC mudou e não há sessão ativa, liberando automaticamente...', {
-          ipAnterior: pedidoPago.ip,
+      // Se já existe sessão ativa para este IP, não precisa liberar novamente
+      if (sessaoAtivaPorIp) {
+        console.log('[verificar-acesso-por-ip] ✅ Sessão ativa já existe para este IP, pulando liberação:', {
+          ip,
+          sessaoId: sessaoAtivaPorIp.id,
+        });
+      } else {
+        // Se o IP ou MAC mudaram (ou pedido não tinha IP/MAC inicial), liberar automaticamente
+        const ipMudou = pedidoPago.ip && pedidoPago.ip !== ip;
+        const macMudou = pedidoPago.deviceMac && mac && pedidoPago.deviceMac.toUpperCase() !== mac.toUpperCase();
+        const pedidoSemIpMac = !pedidoPago.ip && !pedidoPago.deviceMac;
+        
+        // Só liberar se:
+        // 1. IP ou MAC mudaram OU pedido não tinha IP/MAC inicial E
+        // 2. Não há sessão ativa para este IP
+        if ((ipMudou || macMudou || pedidoSemIpMac) && !sessaoAtivaPorIp) {
+        console.log('[verificar-acesso-por-ip] 🔄 Liberando acesso automaticamente...', {
+          motivo: ipMudou ? 'IP mudou' : macMudou ? 'MAC mudou' : 'Pedido sem IP/MAC inicial',
+          ipAnterior: pedidoPago.ip || 'N/A',
           ipNovo: ip,
-          macAnterior: pedidoPago.deviceMac,
-          macNovo: mac,
+          macAnterior: pedidoPago.deviceMac || 'N/A',
+          macNovo: mac || 'N/A',
         });
         
         try {
