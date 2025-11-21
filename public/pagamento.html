@@ -425,7 +425,14 @@
       }
 
       async function iniciarCheckout({ valor, descricao, minutos }) {
-        emCheckout = true; // Marcar que está em checkout para evitar verificações
+        // Verificar acesso ANTES de iniciar checkout (para clientes com acesso liberado manualmente)
+        const temAcesso = await verificarAcessoExistente();
+        if (temAcesso) {
+          console.log('[Portal] Cliente já tem acesso, cancelando checkout');
+          return; // A função verificarAcessoExistente já redireciona
+        }
+        
+        emCheckout = true; // Marcar que está em checkout para evitar verificações durante preenchimento
         elEscolha.style.display = 'none';
         elCheckout.style.display = 'block';
         tempoLivre = Number(minutos) || 120;
