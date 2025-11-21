@@ -1,160 +1,148 @@
 #!/usr/bin/env node
-// Script para investigar pedidos pendentes do cliente
+// Script para investigar pedidos pendentes
+// Uso: node investigar-pedidos-pendentes.js
 
 import { PrismaClient } from '@prisma/client';
-import 'dotenv/config';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const prisma = new PrismaClient();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-const MAC = '8A:22:3C:F4:F9:70';
-const IP = '192.168.88.80';
+// Carregar .env
+const envPath = join(__dirname, '.env');
+let envContent = '';
+try {
+  envContent = readFileSync(envPath, 'utf-8');
+} catch (e) {
+  console.error('❌ Erro ao ler .env:', e.message);
+  process.exit(1);
+}
 
-async function investigar() {
-  console.log('🔍 Investigando pedidos pendentes:');
-  console.log(`   MAC: ${MAC}`);
-  console.log(`   IP:  ${IP}`);
-  console.log('');
+const env = {};
+envContent.split('\n').forEach(line => {
+  const match = line.match(/^([^#=]+)=(.*)$/);
+  if (match) {
+    const key = match[1].trim();
+    const value = match[2].trim().replace(/^["']|["']$/g, '');
+    env[key] = value;
+  }
+});
 
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: env.DATABASE_URL,
+    },
+  },
+});
+
+function formatarData(data) {
+  if (!data) return 'N/A';
+  const d = new Date(data);
+  return d.toLocaleString('pt-BR');
+}
+
+function formatarValor(centavos) {
+  return `R$ ${((centavos || 0) / 100).toFixed(2)}`;
+}
+
+async function main() {
   try {
-    // Buscar pedidos pendentes
+    const agora = new Date();
+    const ultimas24h = new Date(agora.getTime() - 24 * 60 * 60 * 1000);
+
+    console.log('🔍 Investigando pedidos pendentes (últimas 24h)...');
+    console.log('');
+
     const pedidosPendentes = await prisma.pedido.findMany({
       where: {
         status: 'PENDING',
-        OR: [
-          { deviceMac: { equals: MAC, mode: 'insensitive' } },
-          { ip: IP },
-        ],
+        createdAt: { gte: ultimas24h },
       },
       include: {
         charges: {
           orderBy: { createdAt: 'desc' },
-        },
-        device: {
-          select: {
-            id: true,
-            mikId: true,
-          },
+          take: 1,
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    console.log(`📋 Encontrados ${pedidosPendentes.length} pedido(s) pendente(s):\n`);
-
     if (pedidosPendentes.length === 0) {
-      console.log('✅ Nenhum pedido pendente encontrado!');
+      console.log('✅ Nenhum pedido pendente nas últimas 24h!');
       return;
     }
 
-    pedidosPendentes.forEach((p, idx) => {
-      console.log(`═══════════════════════════════════════════════════════════`);
-      console.log(`Pedido ${idx + 1}: ${p.code}`);
-      console.log(`  ID: ${p.id}`);
-      console.log(`  Status: ${p.status}`);
-      console.log(`  Valor: R$ ${(p.amount / 100).toFixed(2)}`);
-      console.log(`  Método: ${p.method}`);
-      console.log(`  Criado em: ${p.createdAt.toISOString()}`);
-      console.log(`  Atualizado em: ${p.updatedAt.toISOString()}`);
-      console.log(`  IP: ${p.ip || 'N/A'}`);
-      console.log(`  MAC: ${p.deviceMac || 'N/A'}`);
-      console.log(`  Device MikId: ${p.device?.mikId || 'N/A'}`);
+    console.log(`⚠️  ${pedidosPendentes.length} pedido(s) pendente(s) encontrado(s):`);
+    console.log('');
 
-      // Analisar charges
-      if (p.charges && p.charges.length > 0) {
-        console.log(`  📦 Charges (${p.charges.length}):`);
-        p.charges.forEach((c, cIdx) => {
-          console.log(`    ${cIdx + 1}. Status: ${c.status}`);
-          console.log(`       Provider ID: ${c.providerId || 'N/A'}`);
-          console.log(`       Criado em: ${c.createdAt.toISOString()}`);
-          console.log(`       Atualizado em: ${c.updatedAt.toISOString()}`);
-          console.log(`       QR Code URL: ${c.qrCodeUrl ? '✅ Sim' : '❌ Não'}`);
-          
-          // Verificar se passou muito tempo desde criação
-          const agora = new Date();
-          const tempoDesdeCriacao = agora - c.createdAt;
-          const horasDesdeCriacao = tempoDesdeCriacao / (1000 * 60 * 60);
-          
-          if (horasDesdeCriacao > 1) {
-            console.log(`       ⚠️  Charge criada há ${horasDesdeCriacao.toFixed(1)} horas (pode ter expirado)`);
-          }
-        });
+    for (const pedido of pedidosPendentes) {
+      const charge = pedido.charges?.[0];
+      const minutosAtras = Math.floor((agora - pedido.createdAt) / 60000);
+      const horasAtras = Math.floor(minutosAtras / 60);
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📦 Pedido: ${pedido.code}`);
+      console.log(`   ID: ${pedido.id}`);
+      console.log(`   Status: ${pedido.status}`);
+      console.log(`   Valor: ${formatarValor(pedido.amount)}`);
+      console.log(`   Criado: ${formatarData(pedido.createdAt)} (${horasAtras}h atrás)`);
+      console.log(`   Cliente: ${pedido.customerName || 'N/A'}`);
+      console.log(`   IP: ${pedido.ip || 'N/A'}`);
+      console.log(`   MAC: ${pedido.deviceMac || 'N/A'}`);
+
+      if (charge) {
+        console.log(`   Charge ID: ${charge.id}`);
+        console.log(`   Charge Status: ${charge.status}`);
+        console.log(`   Charge Criado: ${formatarData(charge.createdAt)}`);
+        if (charge.qrCode) {
+          console.log(`   ✅ QR Code gerado`);
+        } else {
+          console.log(`   ⚠️  QR Code não gerado`);
+        }
       } else {
-        console.log(`  ⚠️  PROBLEMA: Nenhuma charge associada a este pedido!`);
-        console.log(`     Isso significa que o QR Code nunca foi gerado ou não foi salvo.`);
+        console.log(`   ⚠️  Nenhuma charge associada`);
       }
 
-      // Verificar se há webhook logs
-      console.log('');
-    });
+      // Verificar se há sessão ativa para este pedido
+      const sessao = await prisma.sessaoAtiva.findFirst({
+        where: {
+          pedidoId: pedido.id,
+        },
+      });
 
-    // Resumo
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('📊 ANÁLISE:');
-    console.log('');
-    
-    const comCharges = pedidosPendentes.filter(p => p.charges && p.charges.length > 0);
-    const semCharges = pedidosPendentes.filter(p => !p.charges || p.charges.length === 0);
-    
-    console.log(`Total de pedidos pendentes: ${pedidosPendentes.length}`);
-    console.log(`  ✅ Com charges (QR Code gerado): ${comCharges.length}`);
-    console.log(`  ❌ Sem charges (QR Code não gerado): ${semCharges.length}`);
-    console.log('');
+      if (sessao) {
+        console.log(`   ⚠️  ATENÇÃO: Já existe sessão ativa para este pedido pendente!`);
+        console.log(`      Sessão ID: ${sessao.id}`);
+        console.log(`      IP: ${sessao.ipCliente}`);
+        console.log(`      Ativo: ${sessao.ativo ? 'Sim' : 'Não'}`);
+      }
 
-    // Verificar charges por status
-    const todasCharges = pedidosPendentes.flatMap(p => p.charges || []);
-    const chargesCriadas = todasCharges.filter(c => c.status === 'CREATED');
-    const chargesPendentes = todasCharges.filter(c => c.status === 'AUTHORIZED' || c.status === 'PAID');
-    
-    console.log('📦 Status das Charges:');
-    console.log(`  CREATED: ${chargesCriadas.length}`);
-    console.log(`  AUTHORIZED/PAID: ${chargesPendentes.length}`);
-    console.log('');
-
-    // Possíveis causas
-    console.log('💡 POSSÍVEIS CAUSAS:');
-    console.log('');
-    
-    if (semCharges.length > 0) {
-      console.log('⚠️  1. QR Code não foi gerado (sem charges):');
-      console.log('     - Problema ao criar charge na Pagar.me');
-      console.log('     - Cliente pode ter fechado a página antes de gerar QR Code');
       console.log('');
     }
-    
-    if (comCharges.length > 0) {
-      console.log('⚠️  2. QR Code gerado mas pagamento não confirmado:');
-      console.log('     - Cliente não pagou o QR Code');
-      console.log('     - Webhook da Pagar.me não chegou (verificar logs)');
-      console.log('     - QR Code expirou (PIX expira em 30min)');
-      console.log('');
-    }
-    
-    console.log('⚠️  3. Cliente criando múltiplos pedidos:');
-    console.log('     - Cliente pode estar tentando várias vezes sem pagar');
-    console.log('     - Sistema não está detectando pedidos duplicados');
-    console.log('     - Cliente não está vendo a página de pagamento corretamente');
-    console.log('');
 
-    // Recomendações
-    console.log('🔧 RECOMENDAÇÕES:');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('💡 Análise:');
     console.log('');
-    console.log('1. Verificar logs do webhook da Pagar.me:');
-    console.log('   pm2 logs 4 --lines 200 --nostream | grep -E "(webhook|charge|order)" | tail -50');
+    console.log('   Pedidos pendentes podem ser:');
+    console.log('   1. Cliente gerou QR Code mas ainda não pagou');
+    console.log('   2. Pagamento em processamento (aguardando confirmação)');
+    console.log('   3. QR Code expirado (precisa gerar novo)');
+    console.log('   4. Cliente abandonou o checkout');
     console.log('');
-    console.log('2. Verificar se há webhooks chegando mas não processando:');
-    console.log('   Verificar logs de webhook no banco (tabela WebhookLog)');
-    console.log('');
-    console.log('3. Considerar expirar pedidos pendentes após X horas');
-    console.log('');
-    console.log('4. Verificar se o cliente está vendo a página de pagamento corretamente');
+    console.log('   ⚠️  Se o pedido está pendente há mais de 2 horas, pode ser:');
+    console.log('      - Cliente não pagou e esqueceu');
+    console.log('      - QR Code expirou');
+    console.log('      - Problema no webhook do Pagar.me');
     console.log('');
 
   } catch (error) {
-    console.error('❌ Erro ao investigar:', error);
+    console.error('❌ Erro:', error.message);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-investigar();
-
+main();
