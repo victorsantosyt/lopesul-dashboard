@@ -1,23 +1,45 @@
 #!/bin/bash
-# Script rápido para verificar cliente no servidor
+# Script rápido para verificar cliente do Pagar.me
+# Uso: ./verificar-cliente-rapido.sh J0K9SDS80O
 
-MAC="8A:22:3C:F4:F9:70"
-IP="192.168.88.80"
+PEDIDO_CODE="${1:-J0K9SDS80O}"
 
-echo "🔍 Verificando cliente: MAC=$MAC, IP=$IP"
+echo "🔍 Verificando cliente: $PEDIDO_CODE"
 echo ""
 
-# Executar no servidor
-ssh -i ~/.ssh/id_ed25519 root@67.211.212.18 << EOF
-cd /opt/lopesul-dashboard
+cd /opt/lopesul-dashboard || exit 1
 
-# Tentar usar endpoint de debug primeiro (após deploy)
-echo "📋 Testando endpoint de debug..."
-curl -s "http://localhost:3000/api/debug/verificar-cliente?mac=${MAC}&ip=${IP}" 2>/dev/null | jq . 2>/dev/null || echo "   ⚠️  Endpoint ainda não disponível"
+# Verificar via API
+echo "📡 Consultando API..."
+RESPONSE=$(curl -s "https://painel.lopesuldashboardwifi.com/api/pagamentos?q=${PEDIDO_CODE}&limit=1")
+
+if echo "$RESPONSE" | jq -e '.itens[0]' > /dev/null 2>&1; then
+  PEDIDO=$(echo "$RESPONSE" | jq '.itens[0]')
+  echo "✅ Pedido encontrado:"
+  echo "$RESPONSE" | jq -r '.itens[0] | "   Code: \(.code)\n   Status: \(.status)\n   Valor: R$ \(.valor)\n   IP: \(.ip // "N/A")\n   MAC: \(.mac // "N/A")\n   Data: \(.data)"'
+  
+  IP=$(echo "$RESPONSE" | jq -r '.itens[0].ip // empty')
+  MAC=$(echo "$RESPONSE" | jq -r '.itens[0].mac // empty')
+  
+  if [ -n "$IP" ] || [ -n "$MAC" ]; then
+    echo ""
+    echo "🔍 Verificando sessão ativa..."
+    PARAMS=""
+    [ -n "$IP" ] && PARAMS="ip=${IP}"
+    [ -n "$MAC" ] && PARAMS="${PARAMS}${PARAMS:+&}mac=${MAC}"
+    
+    SESSOES=$(curl -s "https://painel.lopesuldashboardwifi.com/api/sessoes?ativas=true&limit=10")
+    if echo "$SESSOES" | jq -e '.[] | select(.ipCliente == "'"$IP"'")' > /dev/null 2>&1; then
+      echo "✅ Sessão ativa encontrada!"
+      echo "$SESSOES" | jq -r '.[] | select(.ipCliente == "'"$IP"'") | "   IP: \(.ipCliente)\n   MAC: \(.macCliente // "N/A")\n   Plano: \(.plano)\n   Expira: \(.expiraEm)"'
+    else
+      echo "❌ Nenhuma sessão ativa encontrada para este IP/MAC"
+    fi
+  fi
+else
+  echo "❌ Pedido não encontrado na API"
+fi
 
 echo ""
-echo "💡 Se o endpoint não funcionar, execute manualmente no servidor:"
-echo "   cd /opt/lopesul-dashboard"
-echo "   node verificar-cliente-especifico.js"
-EOF
-
+echo "💡 Para verificação completa, execute:"
+echo "   node verificar-cliente-pagarme.js"
