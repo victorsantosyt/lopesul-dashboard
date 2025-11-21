@@ -267,9 +267,23 @@ async function markPaidAndRelease(orderCode) {
       const now = new Date();
       const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
 
-      const sessao = await prisma.sessaoAtiva.create({
-        data: {
-          ipCliente: ip || `sem-ip-${pedido.id}`.slice(0, 255),
+      const ipClienteFinal = ip || `sem-ip-${pedido.id}`.slice(0, 255);
+
+      // Usar upsert para evitar erro de constraint única se já existir
+      const sessao = await prisma.sessaoAtiva.upsert({
+        where: {
+          ipCliente: ipClienteFinal,
+        },
+        update: {
+          macCliente: deviceMac || null,
+          plano: pedido.description || 'Acesso',
+          expiraEm,
+          ativo: true,
+          pedidoId: pedido.id,
+          roteadorId: roteadorId || undefined,
+        },
+        create: {
+          ipCliente: ipClienteFinal,
           macCliente: deviceMac || null,
           plano: pedido.description || 'Acesso',
           inicioEm: now,
@@ -280,7 +294,7 @@ async function markPaidAndRelease(orderCode) {
         },
       });
 
-      console.log('[webhook] Sessão ativa criada:', {
+      console.log('[webhook] Sessão ativa criada/atualizada:', {
         sessaoId: sessao.id,
         ipCliente: sessao.ipCliente,
         roteadorId: sessao.roteadorId,
