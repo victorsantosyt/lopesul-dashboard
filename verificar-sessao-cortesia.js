@@ -42,10 +42,12 @@ async function main() {
     console.log(`   MAC: ${pedido.deviceMac || 'N/A'}`);
     console.log('');
 
-    // 2. Verificar sessões
-    if (pedido.SessaoAtiva && pedido.SessaoAtiva.length > 0) {
-      console.log(`✅ ${pedido.SessaoAtiva.length} sessão(ões) encontrada(s):`);
-      pedido.SessaoAtiva.forEach((sessao, idx) => {
+    // 2. Verificar sessões do pedido
+    const sessoesDoPedido = pedido.SessaoAtiva.filter(s => s.pedidoId === pedido.id);
+    
+    if (sessoesDoPedido.length > 0) {
+      console.log(`✅ ${sessoesDoPedido.length} sessão(ões) encontrada(s) para este pedido:`);
+      sessoesDoPedido.forEach((sessao, idx) => {
         const agora = new Date();
         const expirada = sessao.expiraEm < agora;
         const ativa = sessao.ativo && !expirada;
@@ -65,11 +67,27 @@ async function main() {
       console.log('');
       console.log('💡 Criando sessão manualmente...');
       
-      // Criar sessão manualmente
+      // Verificar se já existe sessão com este IP (pode ser de outro pedido)
+      const ipClienteFinal = pedido.ip || `sem-ip-${pedido.id}`.slice(0, 255);
+      const sessaoExistente = await prisma.sessaoAtiva.findFirst({
+        where: {
+          ipCliente: ipClienteFinal,
+        },
+      });
+      
+      if (sessaoExistente) {
+        console.log(`⚠️  Já existe uma sessão para o IP ${ipClienteFinal}:`);
+        console.log(`   Sessão ID: ${sessaoExistente.id}`);
+        console.log(`   Pedido ID: ${sessaoExistente.pedidoId}`);
+        console.log(`   MAC: ${sessaoExistente.macCliente || 'N/A'}`);
+        console.log('');
+        console.log('🔄 Atualizando sessão existente para este pedido...');
+      }
+      
+      // Criar/atualizar sessão manualmente
       const minutos = 120; // 2 horas
       const now = new Date();
       const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
-      const ipClienteFinal = pedido.ip || `sem-ip-${pedido.id}`.slice(0, 255);
 
       try {
         const sessao = await prisma.sessaoAtiva.upsert({
@@ -81,7 +99,7 @@ async function main() {
             plano: pedido.description || 'Acesso de Cortesia',
             expiraEm,
             ativo: true,
-            pedidoId: pedido.id,
+            pedidoId: pedido.id, // Atualizar para este pedido
           },
           create: {
             ipCliente: ipClienteFinal,
@@ -97,9 +115,11 @@ async function main() {
         console.log('✅ Sessão criada/atualizada com sucesso!');
         console.log(`   Sessão ID: ${sessao.id}`);
         console.log(`   IP: ${sessao.ipCliente}`);
+        console.log(`   MAC: ${sessao.macCliente || 'N/A'}`);
         console.log(`   Expira: ${sessao.expiraEm.toISOString()}`);
       } catch (err) {
         console.error('❌ Erro ao criar sessão:', err.message);
+        console.error(err);
       }
     }
 
