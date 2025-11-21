@@ -84,6 +84,11 @@ export default function AcessosPage() {
             status: ativo ? "Ativo" : (expira && expira <= nowLocal ? "Expirado" : "Inativo"),
           };
         });
+        // Debug: log se encontrar a sessão específica
+        const sessaoDebug = mapped.find(r => r.ip.includes('192.168.88.94'));
+        if (sessaoDebug) {
+          console.log('[AcessosPage] Sessão encontrada:', sessaoDebug);
+        }
         setRows(mapped);
         setLastUpdated(new Date());
       } else {
@@ -105,7 +110,7 @@ export default function AcessosPage() {
     const controller = new AbortController();
     loadData(controller.signal);
     return () => controller.abort();
-  }, [from, to]);
+  }, [from, to, range]); // Adicionar range como dependência
 
   // auto-refresh
   useEffect(() => {
