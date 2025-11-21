@@ -70,27 +70,33 @@ export default function AcessosPage() {
 
       if (Array.isArray(data)) {
         const nowLocal = new Date();
-        const nowTimestamp = nowLocal.getTime(); // Usar timestamp para evitar problemas de timezone
+        const nowTimestamp = nowLocal.getTime(); // Timestamp atual (UTC)
         const mapped = data.map((s) => {
           const inicio = s.inicioEm ? new Date(s.inicioEm) : null;
           const expira = s.expiraEm ? new Date(s.expiraEm) : null;
           // Usar timestamp para comparação precisa (evita problemas de timezone)
           const expiraTimestamp = expira ? expira.getTime() : null;
-          const ativo = !!s.ativo && (!expiraTimestamp || expiraTimestamp > nowTimestamp);
+          // Verificar se expirou: expiraTimestamp deve ser maior que nowTimestamp
+          const naoExpirado = !expiraTimestamp || expiraTimestamp > nowTimestamp;
+          const ativo = !!s.ativo && naoExpirado;
           const tempoMin = inicio ? diffMin(nowLocal, inicio) : null;
           const status = ativo ? "Ativo" : (expiraTimestamp && expiraTimestamp <= nowTimestamp ? "Expirado" : "Inativo");
           
           // Debug para sessão específica
           if (s.ipCliente === '192.168.88.94') {
+            const minutosRestantes = expiraTimestamp ? Math.floor((expiraTimestamp - nowTimestamp) / 60000) : null;
             console.log('[AcessosPage] Debug sessão 192.168.88.94:', {
               ativoBanco: s.ativo,
               expiraEm: s.expiraEm,
               expiraTimestamp,
               nowTimestamp,
               diff: expiraTimestamp ? expiraTimestamp - nowTimestamp : null,
-              minutosRestantes: expiraTimestamp ? Math.floor((expiraTimestamp - nowTimestamp) / 60000) : null,
+              minutosRestantes,
+              naoExpirado,
               ativoCalculado: ativo,
               status,
+              nowISO: nowLocal.toISOString(),
+              expiraISO: expira?.toISOString(),
             });
           }
           
