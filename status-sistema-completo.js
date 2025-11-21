@@ -84,11 +84,45 @@ async function verificarRelay() {
   }
 }
 
+async function verificarBanco() {
+  try {
+    await prisma.$connect();
+    // Teste simples
+    await prisma.pedido.count();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
 async function main() {
   try {
     console.log('╔══════════════════════════════════════════════════════════════════════════════╗');
     console.log('║                    📊 STATUS COMPLETO DO SISTEMA                            ║');
     console.log('╚══════════════════════════════════════════════════════════════════════════════╝');
+    console.log('');
+
+    // Verificar banco primeiro
+    console.log('🔌 Verificando conexão com banco de dados...');
+    const bancoStatus = await verificarBanco();
+    if (!bancoStatus.ok) {
+      console.log('');
+      console.log('❌ ERRO: Não foi possível conectar ao banco de dados!');
+      console.log(`   Erro: ${bancoStatus.error}`);
+      console.log('');
+      console.log('💡 Possíveis causas:');
+      console.log('   1. Banco de dados Railway está offline');
+      console.log('   2. Problema de rede/conectividade');
+      console.log('   3. DATABASE_URL incorreta no .env');
+      console.log('');
+      console.log('🔧 Verifique:');
+      console.log('   - Status do Railway: https://railway.app');
+      console.log('   - DATABASE_URL no .env está correta?');
+      console.log('   - Firewall/VPN bloqueando conexão?');
+      console.log('');
+      process.exit(1);
+    }
+    console.log('✅ Banco de dados conectado!');
     console.log('');
 
     const agora = new Date();

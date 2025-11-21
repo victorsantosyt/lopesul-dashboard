@@ -76,9 +76,30 @@ async function execMikrotikCommand(host, user, pass, command) {
   }
 }
 
+async function verificarBanco() {
+  try {
+    await prisma.$connect();
+    await prisma.roteador.count();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
 async function main() {
   try {
     const mikIdOrIp = process.argv[2] || 'LOPESUL-HOTSPOT-06';
+    
+    // Verificar banco primeiro
+    const bancoStatus = await verificarBanco();
+    if (!bancoStatus.ok) {
+      console.log('❌ ERRO: Não foi possível conectar ao banco de dados!');
+      console.log(`   Erro: ${bancoStatus.error}`);
+      console.log('');
+      console.log('💡 O banco de dados Railway pode estar offline ou com problemas de rede.');
+      console.log('   Tente novamente em alguns instantes.');
+      process.exit(1);
+    }
     
     console.log('🔍 Verificando logs do Mikrotik...');
     console.log(`   Identificador: ${mikIdOrIp}`);
