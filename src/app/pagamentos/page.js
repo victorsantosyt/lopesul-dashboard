@@ -270,6 +270,8 @@ export default function PagamentosPage() {
                       ${r.status === "pago" ? "bg-green-600"
                         : r.status === "pendente" ? "bg-yellow-500"
                         : r.status === "expirado" ? "bg-red-600"
+                        : r.status === "cancelado" ? "bg-gray-600"
+                        : r.status === "falhou" ? "bg-red-800"
                         : "bg-gray-500"}`}>
                       {r.status}
                     </span>

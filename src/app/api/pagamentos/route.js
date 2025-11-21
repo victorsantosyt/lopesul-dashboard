@@ -146,6 +146,8 @@ export async function GET(req) {
       if (p.status === 'PAID' || p.status === 'pago') statusPt = 'pago';
       else if (p.status === 'EXPIRED' || p.status === 'expirado') statusPt = 'expirado';
       else if (p.status === 'PENDING' || p.status === 'pendente') statusPt = 'pendente';
+      else if (p.status === 'CANCELED' || p.status === 'cancelado') statusPt = 'cancelado';
+      else if (p.status === 'FAILED' || p.status === 'falhou') statusPt = 'falhou';
       
       // Mapear método de pagamento
       let forma = 'PIX';
