@@ -22,6 +22,14 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(x, max));
 }
 
+function toYMDLocal(d) {
+  const date = d instanceof Date ? d : new Date(d);
+  const yr = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, '0');
+  const da = String(date.getDate()).padStart(2, '0');
+  return `${yr}-${mo}-${da}`;
+}
+
 function extractPix(order) {
   const charges = Array.isArray(order?.charges) ? order.charges : [];
   const charge = charges.find(c =>
@@ -69,6 +77,18 @@ export async function GET(req) {
     if (toStr)   AND.push({ createdAt: { lte: new Date(`${toStr}T23:59:59.999Z`) } });
     if (AND.length) where.AND = AND;
 
+    // Buscar com busca por texto (q) se fornecido
+    if (url.searchParams.get('q')) {
+      const q = url.searchParams.get('q').trim();
+      where.OR = [
+        { code: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { ip: { contains: q, mode: 'insensitive' } },
+        { deviceMac: { contains: q, mode: 'insensitive' } },
+        { customerName: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     const rows = await prisma.pedido.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -78,25 +98,56 @@ export async function GET(req) {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
+        device: {
+          select: {
+            mikId: true,
+            ip: true,
+          },
+        },
+        roteador: {
+          select: {
+            nome: true,
+          },
+        },
       },
     });
 
-    const out = rows.map(p => {
+    // Mapear para o formato esperado pela página
+    const itens = rows.map(p => {
       const c = p.charges?.[0] ?? null;
+      
+      // Mapear status para formato esperado pela página
+      let statusPt = 'pendente';
+      if (p.status === 'PAID' || p.status === 'pago') statusPt = 'pago';
+      else if (p.status === 'EXPIRED' || p.status === 'expirado') statusPt = 'expirado';
+      else if (p.status === 'PENDING' || p.status === 'pendente') statusPt = 'pendente';
+      
+      // Mapear método de pagamento
+      let forma = 'PIX';
+      if (p.method === 'CARD') forma = 'Cartão';
+      else if (p.method === 'BOLETO') forma = 'Boleto';
+      else if (p.method === 'PIX') forma = 'PIX';
+      
       return {
         id: p.id,
         code: p.code,
-        amount: p.amount,
-        method: p.method,         // PIX | CARD | BOLETO
-        status: p.status,         // PENDING | PAID | ...
+        descricao: p.description || 'Acesso Wi-Fi',
+        plano: p.description || 'Acesso', // Usar description como plano
+        valor: (p.amount || 0) / 100, // Converter centavos para reais
+        forma: forma,
+        data: p.createdAt,
+        status: statusPt,
+        mac: p.deviceMac || null,
         ip: p.ip || null,
-        deviceMac: p.deviceMac || null,
+        roteador: p.roteador?.nome || p.device?.mikId || null,
+        // Campos adicionais para compatibilidade
+        amount: p.amount,
+        method: p.method,
         customerName: p.customerName || null,
         customerDoc: p.customerDoc || null,
-        createdAt: p.createdAt,
         charge: c ? {
           id: c.id,
-          status: c.status,       // CREATED | PAID | ...
+          status: c.status,
           qrCode: c.qrCode || null,
           qrCodeUrl: c.qrCodeUrl || null,
           createdAt: c.createdAt,
@@ -104,7 +155,34 @@ export async function GET(req) {
       };
     });
 
-    return NextResponse.json({ ok: true, count: out.length, rows: out }, { status: 200 });
+    // Calcular resumo
+    const qtdPagos = rows.filter(p => p.status === 'PAID').length;
+    const qtdPendentes = rows.filter(p => p.status === 'PENDING').length;
+    const qtdExpirados = rows.filter(p => p.status === 'EXPIRED').length;
+    const totalPagos = rows
+      .filter(p => p.status === 'PAID')
+      .reduce((sum, p) => sum + (p.amount || 0), 0) / 100;
+
+    // Calcular período
+    const periodo = {
+      from: fromStr || toYMDLocal(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000)),
+      to: toStr || toYMDLocal(new Date()),
+      days: fromStr && toStr ? Math.ceil((new Date(toStr) - new Date(fromStr)) / (24 * 60 * 60 * 1000)) + 1 : 30,
+    };
+
+    return NextResponse.json({
+      ok: true,
+      count: itens.length,
+      itens, // Nome correto esperado pela página
+      rows: itens, // Manter compatibilidade
+      periodo,
+      resumo: {
+        qtdPagos,
+        qtdPendentes,
+        qtdExpirados,
+        totalPagos,
+      },
+    }, { status: 200 });
   } catch (e) {
     console.error('GET /api/pagamentos', e);
     return NextResponse.json({ ok: false, error: 'Erro ao listar pagamentos' }, { status: 500 });
