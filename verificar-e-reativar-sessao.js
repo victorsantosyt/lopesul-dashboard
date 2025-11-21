@@ -165,8 +165,8 @@ async function main() {
     if (precisaReativar) {
       if (expirada) {
         console.log('⏰ Sessão expirou. Reativando com novo tempo...');
-      } else if (minutosRestantesAteExpirar < 5) {
-        console.log(`⏰ Sessão está prestes a expirar (${minutosRestantesAteExpirar} min). Reativando...`);
+      } else if (minutosRestantesAteExpirar < 30) {
+        console.log(`⏰ Sessão está prestes a expirar (${minutosRestantesAteExpirar} min). Reativando com 2 horas...`);
       } else {
         console.log('💡 Sessão não está ativa no banco. Reativando...');
       }
