@@ -102,7 +102,7 @@
           <input id="cli-doc" class="inp" placeholder="CPF ou CNPJ (somente números)" inputmode="numeric" autocomplete="off" maxlength="18">
         </div>
         <div class="hint">Obrigatório para gerar o QR Code Pix.</div>
-        <button class="btn" id="btn-gerar-pix">Gerar QR Pix</button>
+        <button type="button" class="btn" id="btn-gerar-pix">Gerar QR Pix</button>
         <div class="pill err" id="cli-erro" style="display:none"></div>
         <hr style="margin:14px 0; border:none; border-top:1px solid #eee">
       </div>
@@ -462,7 +462,10 @@
           elCliNome.value = nomeCli || '';
           elCliDoc.value  = docCli  || '';
 
-          elBtnGerar.onclick = async () => {
+          elBtnGerar.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
             elCliErro.style.display = 'none';
             elCliErro.textContent = '';
             const n  = (elCliNome.value || '').trim() || 'Cliente';
@@ -482,7 +485,22 @@
 
             nomeCli = n; docCli = d0;
             elClienteForm.style.display = 'none';
-            await gerarPix({ valor, descricao, setErro });
+            
+            // Desabilitar botão durante o processamento
+            elBtnGerar.disabled = true;
+            elBtnGerar.textContent = 'Gerando QR Code...';
+            
+            try {
+              await gerarPix({ valor, descricao, setErro });
+            } catch (error) {
+              console.error('[Portal] Erro ao gerar PIX:', error);
+              elCliErro.style.display = 'block';
+              elCliErro.textContent = 'Erro ao gerar QR Code. Tente novamente.';
+              elClienteForm.style.display = 'block';
+            } finally {
+              elBtnGerar.disabled = false;
+              elBtnGerar.textContent = 'Gerar QR Pix';
+            }
           };
 
           elCliDoc.addEventListener('input', (e) => {
@@ -503,6 +521,8 @@
 
       async function gerarPix({ valor, descricao, setErro }) {
         try {
+          console.log('[Portal] Gerando PIX...', { valor, descricao, nomeCli, docCli, ip, mac, deviceId, mikId });
+          
           const res  = await fetch(`${API}/api/pagamentos/checkout`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -516,16 +536,44 @@
               customer: { name: nomeCli, document: docCli }
             })
           });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) return setErro('❌ ' + (data?.error || `HTTP ${res.status}`));
+          
+          const data = await res.json().catch((err) => {
+            console.error('[Portal] Erro ao parsear resposta JSON:', err);
+            return {};
+          });
+          
+          if (!res.ok) {
+            const errorMsg = data?.error || `HTTP ${res.status}`;
+            console.error('[Portal] Erro na API checkout:', errorMsg, data);
+            setErro('❌ ' + errorMsg);
+            return;
+          }
+          
           const copiaECola = data?.copiaECola || data?.payloadPix || null;
           REF = data?.externalId || null;
-          if (!REF) return setErro('Resposta sem referência (externalId).');
-          if (!copiaECola) return setErro('Resposta sem “copia-e-cola” Pix.');
+          
+          if (!REF) {
+            console.error('[Portal] Resposta sem externalId:', data);
+            setErro('Resposta sem referência (externalId).');
+            return;
+          }
+          
+          if (!copiaECola) {
+            console.error('[Portal] Resposta sem copiaECola:', data);
+            setErro('Resposta sem "copia-e-cola" Pix.');
+            return;
+          }
+          
+          console.log('[Portal] ✅ QR Code gerado com sucesso:', REF);
+          
           document.getElementById("pix-code").textContent = copiaECola;
           new QRious({ element: document.getElementById('qrcode'), value: copiaECola, size: 220, background: 'white', foreground: 'black' });
-          iniciarTimer(); iniciarPolling();
-        } catch (e) { setErro('❌ Não foi possível iniciar o pagamento.'); }
+          iniciarTimer(); 
+          iniciarPolling();
+        } catch (e) {
+          console.error('[Portal] Erro ao gerar PIX:', e);
+          setErro('❌ Não foi possível iniciar o pagamento: ' + (e.message || 'Erro desconhecido'));
+        }
       }
 
       window.copiarPix = function() {
