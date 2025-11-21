@@ -126,6 +126,7 @@ async function main() {
     const agora = new Date();
     const expirada = sessao.expiraEm < agora;
     const ativa = sessao.ativo && !expirada;
+    const minutosRestantes = expirada ? 0 : Math.floor((sessao.expiraEm - agora) / 60000);
 
     console.log('📋 Status da sessão:');
     console.log(`   ID: ${sessao.id}`);
@@ -134,8 +135,15 @@ async function main() {
     console.log(`   Plano: ${sessao.plano || 'N/A'}`);
     console.log(`   Início: ${sessao.inicioEm.toISOString()}`);
     console.log(`   Expira: ${sessao.expiraEm.toISOString()}`);
+    console.log(`   Agora: ${agora.toISOString()}`);
     console.log(`   Ativo (banco): ${sessao.ativo ? 'Sim' : 'Não'}`);
     console.log(`   Expirado: ${expirada ? 'Sim' : 'Não'}`);
+    if (!expirada) {
+      console.log(`   Minutos restantes: ${minutosRestantes} min`);
+    } else {
+      const minutosExpirados = Math.floor((agora - sessao.expiraEm) / 60000);
+      console.log(`   Expirado há: ${minutosExpirados} minutos`);
+    }
     console.log(`   Status atual: ${ativa ? '✅ ATIVA' : expirada ? '⏰ EXPIRADA' : '❌ INATIVA'}`);
     console.log('');
 
@@ -150,7 +158,11 @@ async function main() {
     }
 
     if (!ativa) {
-      console.log('💡 Sessão não está ativa. Reativando...');
+      if (expirada) {
+        console.log('⏰ Sessão expirou. Reativando com novo tempo...');
+      } else {
+        console.log('💡 Sessão não está ativa no banco. Reativando...');
+      }
       
       // Calcular novo tempo de expiração (2 horas a partir de agora)
       const minutos = 120;
@@ -167,13 +179,17 @@ async function main() {
 
         console.log('✅ Sessão reativada com sucesso!');
         console.log(`   Nova expiração: ${sessaoAtualizada.expiraEm.toISOString()}`);
+        console.log(`   Expira em: ${minutos} minutos (${Math.floor(minutos / 60)}h ${minutos % 60}min)`);
         console.log(`   Status: ✅ ATIVA`);
+        console.log('');
+        console.log('💡 A sessão deve aparecer como "Ativa" na página de acessos agora.');
       } catch (err) {
         console.error('❌ Erro ao reativar sessão:', err.message);
         console.error(err);
       }
     } else {
       console.log('✅ Sessão já está ativa!');
+      console.log(`   Expira em: ${minutosRestantes} minutos`);
     }
 
   } catch (error) {
