@@ -61,8 +61,29 @@ export async function GET(req) {
     }
 
     const where = {};
-    if (ativas !== null) where.ativo = ativas;
-    if (AND.length) where.AND = AND;
+    const now = new Date();
+    
+    // Se há filtro de data, incluir sessões que:
+    // 1. Começaram no período especificado OU
+    // 2. Estão ativas e ainda não expiraram (mesmo que tenham começado antes)
+    if (AND.length > 0) {
+      where.OR = [
+        { AND: AND }, // Sessões que começaram no período
+        {
+          ativo: true,
+          expiraEm: { gte: now }, // Sessões ativas que ainda não expiraram
+        },
+      ];
+    } else {
+      // Sem filtro de data, aplicar apenas filtro de ativas se especificado
+      if (ativas !== null) {
+        where.ativo = ativas;
+        // Se quer apenas ativas, garantir que não expiraram
+        if (ativas === true) {
+          where.expiraEm = { gte: now };
+        }
+      }
+    }
 
     const items = await prisma.sessaoAtiva.findMany({
       where,
@@ -76,13 +97,23 @@ export async function GET(req) {
         expiraEm: true,
         ativo: true,
         plano: true,
-        // pagamentoId: true, // <- descomente se quiser correlacionar no front
-        // createdAt: true,   // <- se existir
-        // updatedAt: true,   // <- se existir
+        pedido: {
+          select: {
+            customerName: true,
+            customerDoc: true,
+            customerEmail: true,
+          },
+        },
       },
     });
 
-    return NextResponse.json(items, {
+    // Mapear para incluir nome do cliente
+    const itemsWithNome = items.map((item) => ({
+      ...item,
+      nome: item.pedido?.customerName || null,
+    }));
+
+    return NextResponse.json(itemsWithNome, {
       status: 200,
       headers: { 'Cache-Control': 'no-store' },
     });
