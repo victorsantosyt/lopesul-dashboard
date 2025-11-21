@@ -42,44 +42,62 @@ async function main() {
     console.log(`   MAC: ${pedido.deviceMac || 'N/A'}`);
     console.log('');
 
-    // 2. Verificar sessões do pedido
-    const sessoesDoPedido = pedido.SessaoAtiva.filter(s => s.pedidoId === pedido.id);
+    // 2. Verificar sessões do pedido (buscar diretamente por pedidoId)
+    const sessoesDoPedido = await prisma.sessaoAtiva.findMany({
+      where: {
+        pedidoId: pedido.id,
+      },
+      orderBy: { inicioEm: 'desc' },
+    });
     
-    if (sessoesDoPedido.length > 0) {
-      console.log(`✅ ${sessoesDoPedido.length} sessão(ões) encontrada(s) para este pedido:`);
+    // Verificar também se há sessão com o IP/MAC do pedido
+    const ipClienteFinal = pedido.ip || `sem-ip-${pedido.id}`.slice(0, 255);
+    const sessaoPorIp = await prisma.sessaoAtiva.findFirst({
+      where: {
+        ipCliente: ipClienteFinal,
+      },
+    });
+    
+    // Verificar se a sessão encontrada realmente pertence a este pedido e tem IP/MAC corretos
+    const sessaoCorreta = sessoesDoPedido.find(s => 
+      s.ipCliente === ipClienteFinal && 
+      (!pedido.deviceMac || s.macCliente === pedido.deviceMac)
+    );
+    
+    if (sessaoCorreta) {
+      const agora = new Date();
+      const expirada = sessaoCorreta.expiraEm < agora;
+      const ativa = sessaoCorreta.ativo && !expirada;
+      
+      console.log(`✅ Sessão encontrada para este pedido:`);
+      console.log(`   ID: ${sessaoCorreta.id}`);
+      console.log(`   IP: ${sessaoCorreta.ipCliente}`);
+      console.log(`   MAC: ${sessaoCorreta.macCliente || 'N/A'}`);
+      console.log(`   Plano: ${sessaoCorreta.plano || 'N/A'}`);
+      console.log(`   Início: ${sessaoCorreta.inicioEm.toISOString()}`);
+      console.log(`   Expira: ${sessaoCorreta.expiraEm.toISOString()}`);
+      console.log(`   Ativo: ${sessaoCorreta.ativo ? 'Sim' : 'Não'}`);
+      console.log(`   Status: ${ativa ? '✅ ATIVA' : expirada ? '⏰ EXPIRADA' : '❌ INATIVA'}`);
+    } else if (sessoesDoPedido.length > 0) {
+      console.log(`⚠️  ${sessoesDoPedido.length} sessão(ões) encontrada(s) para este pedido, mas com IP/MAC diferentes:`);
       sessoesDoPedido.forEach((sessao, idx) => {
-        const agora = new Date();
-        const expirada = sessao.expiraEm < agora;
-        const ativa = sessao.ativo && !expirada;
-        
         console.log(`\n   Sessão ${idx + 1}:`);
         console.log(`   ID: ${sessao.id}`);
-        console.log(`   IP: ${sessao.ipCliente}`);
-        console.log(`   MAC: ${sessao.macCliente || 'N/A'}`);
-        console.log(`   Plano: ${sessao.plano || 'N/A'}`);
-        console.log(`   Início: ${sessao.inicioEm.toISOString()}`);
-        console.log(`   Expira: ${sessao.expiraEm.toISOString()}`);
-        console.log(`   Ativo: ${sessao.ativo ? 'Sim' : 'Não'}`);
-        console.log(`   Status: ${ativa ? '✅ ATIVA' : expirada ? '⏰ EXPIRADA' : '❌ INATIVA'}`);
+        console.log(`   IP: ${sessao.ipCliente} (esperado: ${ipClienteFinal})`);
+        console.log(`   MAC: ${sessao.macCliente || 'N/A'} (esperado: ${pedido.deviceMac || 'N/A'})`);
       });
+      console.log('\n💡 Criando/atualizando sessão com IP/MAC corretos...');
     } else {
       console.log('❌ Nenhuma sessão encontrada para este pedido!');
       console.log('');
       console.log('💡 Criando sessão manualmente...');
       
       // Verificar se já existe sessão com este IP (pode ser de outro pedido)
-      const ipClienteFinal = pedido.ip || `sem-ip-${pedido.id}`.slice(0, 255);
-      const sessaoExistente = await prisma.sessaoAtiva.findFirst({
-        where: {
-          ipCliente: ipClienteFinal,
-        },
-      });
-      
-      if (sessaoExistente) {
-        console.log(`⚠️  Já existe uma sessão para o IP ${ipClienteFinal}:`);
-        console.log(`   Sessão ID: ${sessaoExistente.id}`);
-        console.log(`   Pedido ID: ${sessaoExistente.pedidoId}`);
-        console.log(`   MAC: ${sessaoExistente.macCliente || 'N/A'}`);
+      if (sessaoPorIp && sessaoPorIp.pedidoId !== pedido.id) {
+        console.log(`⚠️  Já existe uma sessão para o IP ${ipClienteFinal} de outro pedido:`);
+        console.log(`   Sessão ID: ${sessaoPorIp.id}`);
+        console.log(`   Pedido ID: ${sessaoPorIp.pedidoId} (atual: ${pedido.id})`);
+        console.log(`   MAC: ${sessaoPorIp.macCliente || 'N/A'}`);
         console.log('');
         console.log('🔄 Atualizando sessão existente para este pedido...');
       }
