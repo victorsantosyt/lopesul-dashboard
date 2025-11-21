@@ -44,12 +44,16 @@ const RELAY_TOKEN = env.RELAY_TOKEN || '';
 
 async function execMikrotikCommand(host, user, pass, command) {
   try {
+    if (!RELAY_TOKEN || RELAY_TOKEN.length < 10) {
+      return { ok: false, error: 'RELAY_TOKEN ausente ou inválido no .env' };
+    }
+
     const url = `${RELAY_BASE}/relay/exec`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(RELAY_TOKEN ? { 'X-Relay-Token': RELAY_TOKEN } : {}),
+        'Authorization': `Bearer ${RELAY_TOKEN}`,
       },
       body: JSON.stringify({
         host,
@@ -58,6 +62,11 @@ async function execMikrotikCommand(host, user, pass, command) {
         command,
       }),
     });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return { ok: false, error: `HTTP ${response.status}: ${text}` };
+    }
 
     const data = await response.json();
     return data;
