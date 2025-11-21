@@ -101,7 +101,7 @@
           <input id="cli-nome" class="inp" placeholder="Nome completo" autocomplete="name">
           <input id="cli-doc" class="inp" placeholder="CPF ou CNPJ (somente números)" inputmode="numeric" autocomplete="off" maxlength="18">
         </div>
-        <div class="hint">Obrigatório para gerar o QR Code Pix.</div>
+        <div class="hint">Nome e CPF/CNPJ são obrigatórios para gerar o QR Code Pix.</div>
         <button type="button" class="btn" id="btn-gerar-pix">Gerar QR Pix</button>
         <div class="pill err" id="cli-erro" style="display:none"></div>
         <hr style="margin:14px 0; border:none; border-top:1px solid #eee">
@@ -308,7 +308,7 @@
       // Verificar acesso ao carregar a página (apenas uma vez, se não estiver em checkout)
       verificarAcessoExistente();
 
-      let nomeCli = get("nome") || get("name") || "Cliente";
+      let nomeCli = get("nome") || get("name") || "";
       let docCli  = get("doc")  || get("document") || "";
 
       let REF = null;
@@ -486,9 +486,23 @@
             
             elCliErro.style.display = 'none';
             elCliErro.textContent = '';
-            const n  = (elCliNome.value || '').trim() || 'Cliente';
+            const n  = (elCliNome.value || '').trim();
             const d0 = onlyDigits(elCliDoc.value);
 
+            // Validar nome (obrigatório e não pode ser apenas "Cliente")
+            if (!n || n.length < 3) {
+              elCliErro.style.display = 'block';
+              elCliErro.textContent = 'Informe seu nome completo (mínimo 3 caracteres).';
+              return;
+            }
+
+            if (n.toLowerCase() === 'cliente' || n.toLowerCase() === 'nome') {
+              elCliErro.style.display = 'block';
+              elCliErro.textContent = 'Informe seu nome real, não use "Cliente" ou "Nome".';
+              return;
+            }
+
+            // Validar CPF/CNPJ
             if (!d0 || (d0.length !== 11 && d0.length !== 14)) {
               elCliErro.style.display = 'block';
               elCliErro.textContent = 'Informe CPF (11 dígitos) ou CNPJ (14 dígitos).';
