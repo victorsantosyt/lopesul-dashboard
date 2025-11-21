@@ -179,12 +179,14 @@ async function main() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📋 2️⃣ CLIENTES PAGOS (paid_clients)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    const paid = await execMikrotikCommand(host, user, pass, '/ip/firewall/address-list/print where list=paid_clients');
+    const paid = await execMikrotikCommand(host, user, pass, '/ip/firewall/address-list/print');
     if (paid.ok && Array.isArray(paid.data)) {
-      if (paid.data.length === 0) {
+      // Filtrar apenas os da lista paid_clients
+      const paidClients = paid.data.filter(item => item.list === 'paid_clients');
+      if (paidClients.length === 0) {
         console.log('   ⚠️  Nenhum cliente na lista paid_clients');
       } else {
-        paid.data.forEach((item, idx) => {
+        paidClients.forEach((item, idx) => {
           console.log(`   ${idx + 1}. IP: ${item.address || 'N/A'} | Comentário: ${item.comment || 'N/A'}`);
         });
       }
@@ -197,12 +199,14 @@ async function main() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📋 3️⃣ IP BINDINGS (BYPASSED)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    const bindings = await execMikrotikCommand(host, user, pass, '/ip/hotspot/ip-binding/print where type=bypassed');
+    const bindings = await execMikrotikCommand(host, user, pass, '/ip/hotspot/ip-binding/print');
     if (bindings.ok && Array.isArray(bindings.data)) {
-      if (bindings.data.length === 0) {
+      // Filtrar apenas os do tipo bypassed
+      const bypassed = bindings.data.filter(binding => binding.type === 'bypassed');
+      if (bypassed.length === 0) {
         console.log('   ⚠️  Nenhum IP binding bypassed');
       } else {
-        bindings.data.forEach((binding, idx) => {
+        bypassed.forEach((binding, idx) => {
           console.log(`   ${idx + 1}. IP: ${binding.address || 'N/A'} | MAC: ${binding['mac-address'] || 'N/A'} | Comentário: ${binding.comment || 'N/A'}`);
         });
       }
