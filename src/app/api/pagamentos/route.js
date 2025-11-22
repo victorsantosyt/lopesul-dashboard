@@ -92,10 +92,9 @@ export async function GET(req) {
       const searchConditions = [
         { code: { contains: q, mode: 'insensitive' } },
         { description: { contains: q, mode: 'insensitive' } },
-        // Para campos inet (IP), usar equals ou buscar como string
-        // Como ip é inet no banco, não podemos usar contains diretamente
-        // Vamos buscar apenas se o termo de busca for exatamente um IP válido
-        ...(q.match(/^[\d\.:]+$/) ? [{ ip: { equals: q } }] : []),
+        // Para campo ip (inet), usar equals se for um IP válido
+        // Não podemos usar contains em campos inet do PostgreSQL
+        ...(q.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) ? [{ ip: q }] : []),
         { deviceMac: { contains: q, mode: 'insensitive' } },
         { customerName: { contains: q, mode: 'insensitive' } },
       ];
