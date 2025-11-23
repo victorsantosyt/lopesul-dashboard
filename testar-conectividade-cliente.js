@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Script para diagnóstico completo de acesso à internet
-// Uso: node diagnostico-completo-acesso.js [mikId ou IP do roteador] [IP do cliente]
+// Script para testar conectividade do cliente no Mikrotik
+// Uso: node testar-conectividade-cliente.js [mikId] [IP do cliente]
 
 import { PrismaClient } from '@prisma/client';
 import { readFileSync } from 'fs';
@@ -79,11 +79,17 @@ async function main() {
     const mikIdOrIp = process.argv[2] || 'LOPESUL-HOTSPOT-06';
     const clienteIp = process.argv[3];
     
-    console.log('🔍 Diagnóstico completo de acesso à internet...');
-    console.log(`   Roteador: ${mikIdOrIp}`);
-    if (clienteIp) {
-      console.log(`   Cliente IP: ${clienteIp}`);
+    if (!clienteIp) {
+      console.log('📋 Uso: node testar-conectividade-cliente.js [mikId] <IP do cliente>');
+      console.log('');
+      console.log('💡 Exemplo:');
+      console.log('   node testar-conectividade-cliente.js LOPESUL-HOTSPOT-06 192.168.88.199');
+      process.exit(1);
     }
+
+    console.log('🔍 Testando conectividade do cliente...');
+    console.log(`   Roteador: ${mikIdOrIp}`);
+    console.log(`   Cliente IP: ${clienteIp}`);
     console.log('');
 
     // Buscar roteador
@@ -132,118 +138,82 @@ async function main() {
     console.log(`✅ Roteador: ${roteador.nome} (${host})`);
     console.log('');
 
-    // 1. Verificar NAT (masquerade)
+    // Testar ping do Mikrotik para o cliente
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('1️⃣ NAT (MASQUERADE) - Essencial para acesso à internet');
+    console.log('1️⃣ Testando conectividade do Mikrotik para o cliente');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
-    const natRules = await execMikrotikCommand(host, user, pass, '/ip/firewall/nat/print where chain=srcnat');
-    if (natRules.ok && Array.isArray(natRules.data)) {
-      const masquerade = natRules.data.filter(r => r.action === 'masquerade');
-      
-      if (masquerade.length === 0) {
-        console.log('   ❌ PROBLEMA CRÍTICO: Nenhuma regra de masquerade encontrada!');
-        console.log('   Sem masquerade, os clientes não conseguem acessar a internet.');
-        console.log('');
-        console.log('   💡 Precisa criar regra:');
-        console.log('   /ip/firewall/nat/add chain=srcnat action=masquerade out-interface=ether1');
-      } else {
-        console.log(`   ✅ ${masquerade.length} regra(s) de masquerade encontrada(s):`);
-        masquerade.forEach((r, idx) => {
-          console.log(`   ${idx + 1}. Out Interface: ${r['out-interface'] || 'N/A'}`);
-          console.log(`      Src Address: ${r['src-address'] || 'N/A'}`);
-          console.log(`      Desabilitado: ${r.disabled === 'true' ? 'Sim ⚠️' : 'Não ✅'}`);
-          console.log(`      Comentário: ${r.comment || 'N/A'}`);
-          console.log('');
-        });
-      }
+    const ping = await execMikrotikCommand(host, user, pass, `/ping count=3 address=${clienteIp}`);
+    if (ping.ok) {
+      console.log('   ✅ Cliente está respondendo ao ping');
     } else {
-      console.log(`   ❌ Erro ao buscar NAT: ${natRules.error || 'Desconhecido'}`);
+      console.log(`   ⚠️  Cliente não respondeu ao ping: ${ping.error || 'Desconhecido'}`);
+      console.log('   (Isso pode ser normal se o cliente bloqueia ping)');
     }
     console.log('');
 
-    // 2. Verificar rotas
+    // Verificar conexões ativas do cliente
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('2️⃣ ROTAS (Gateway padrão)');
+    console.log('2️⃣ Conexões ativas do cliente');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
-    const routes = await execMikrotikCommand(host, user, pass, '/ip/route/print');
-    if (routes.ok && Array.isArray(routes.data)) {
-      // Filtrar rotas padrão manualmente
-      const defaultRoutes = routes.data.filter(r => 
-        r['dst-address'] === '0.0.0.0/0' || r['dst-address'] === '0.0.0.0'
+    const connections = await execMikrotikCommand(host, user, pass, '/ip/firewall/connection/print');
+    if (connections.ok && Array.isArray(connections.data)) {
+      const clienteConnections = connections.data.filter(c => 
+        c['src-address'] === clienteIp || c['dst-address'] === clienteIp
       );
       
-      if (defaultRoutes.length === 0) {
-        console.log('   ❌ PROBLEMA: Nenhuma rota padrão (0.0.0.0/0) encontrada!');
-        console.log('   Sem rota padrão, o tráfego não sabe para onde ir.');
-      } else {
-        console.log(`   ✅ ${defaultRoutes.length} rota(s) padrão encontrada(s):`);
-        defaultRoutes.forEach((r, idx) => {
-          console.log(`   ${idx + 1}. Dst Address: ${r['dst-address'] || 'N/A'}`);
-          console.log(`      Gateway: ${r.gateway || 'N/A'}`);
-          console.log(`      Interface: ${r['interface'] || 'N/A'}`);
-          console.log(`      Desabilitado: ${r.disabled === 'true' ? 'Sim ⚠️' : 'Não ✅'}`);
+      if (clienteConnections.length > 0) {
+        console.log(`   ✅ ${clienteConnections.length} conexão(ões) ativa(s) do cliente:`);
+        clienteConnections.slice(0, 5).forEach((c, idx) => {
+          console.log(`   ${idx + 1}. ${c['src-address']}:${c['src-port'] || 'N/A'} -> ${c['dst-address']}:${c['dst-port'] || 'N/A'}`);
+          console.log(`      Protocol: ${c.protocol || 'N/A'} | State: ${c.tcp_state || c.state || 'N/A'}`);
           console.log('');
         });
+      } else {
+        console.log('   ⚠️  Nenhuma conexão ativa do cliente');
+        console.log('   Isso pode indicar que o tráfego está sendo bloqueado');
       }
-    } else {
-      console.log(`   ❌ Erro ao buscar rotas: ${routes.error || 'Desconhecido'}`);
     }
     console.log('');
 
-    // 3. Verificar interfaces
+    // Verificar regras que podem estar bloqueando
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('3️⃣ INTERFACES (Status)');
+    console.log('3️⃣ Verificando regras que podem estar bloqueando');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
-    const interfaces = await execMikrotikCommand(host, user, pass, '/interface/print');
-    if (interfaces.ok && Array.isArray(interfaces.data)) {
-      const wan = interfaces.data.find(i => i.name === 'ether1' || i.name?.includes('WAN'));
-      const lan = interfaces.data.find(i => i.name === 'ether2' || i.name?.includes('LAN'));
+    const filterRules = await execMikrotikCommand(host, user, pass, '/ip/firewall/filter/print where chain=forward');
+    if (filterRules.ok && Array.isArray(filterRules.data)) {
+      // Encontrar regras que bloqueiam 192.168.88.0/24 mas não excluem paid_clients
+      const regrasBloqueio = filterRules.data.filter(r => 
+        (r.action === 'drop' || r.action === 'reject') &&
+        (r['src-address'] === '192.168.88.0/24' || r['src-address'] === clienteIp) &&
+        (!r['src-address-list'] || !r['src-address-list'].includes('!paid_clients'))
+      );
       
-      if (wan) {
-        console.log(`   WAN (ether1): ${wan.running === 'true' ? '✅ Ativa' : '❌ Inativa'}`);
-        console.log(`      Tipo: ${wan.type || 'N/A'}`);
-      }
-      if (lan) {
-        console.log(`   LAN (ether2): ${lan.running === 'true' ? '✅ Ativa' : '❌ Inativa'}`);
-        console.log(`      Tipo: ${lan.type || 'N/A'}`);
+      if (regrasBloqueio.length > 0) {
+        console.log(`   ⚠️  ${regrasBloqueio.length} regra(s) pode(m) estar bloqueando:`);
+        regrasBloqueio.forEach((r, idx) => {
+          console.log(`   ${idx + 1}. ID: ${r['.id']} | Action: ${r.action}`);
+          console.log(`      Src Address: ${r['src-address'] || 'N/A'}`);
+          console.log(`      Src Address List: ${r['src-address-list'] || 'N/A'}`);
+          console.log('');
+        });
+      } else {
+        console.log('   ✅ Nenhuma regra problemática encontrada');
       }
     }
     console.log('');
 
-    // 4. Verificar se cliente está na lista paid_clients
-    if (clienteIp) {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`4️⃣ VERIFICAÇÃO DO CLIENTE ${clienteIp}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      const paidList = await execMikrotikCommand(host, user, pass, '/ip/firewall/address-list/print');
-      if (paidList.ok && Array.isArray(paidList.data)) {
-        const cliente = paidList.data.find(item => 
-          item.list === 'paid_clients' && item.address === clienteIp
-        );
-        
-        if (cliente) {
-          console.log(`   ✅ Cliente ${clienteIp} está na lista paid_clients`);
-        } else {
-          console.log(`   ❌ Cliente ${clienteIp} NÃO está na lista paid_clients!`);
-        }
-      }
-      console.log('');
-    }
-
-    // Diagnóstico final
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('💡 DIAGNÓSTICO FINAL:');
+    console.log('💡 RECOMENDAÇÕES:');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('');
-    console.log('Para acesso à internet funcionar, precisa ter:');
-    console.log('   1. ✅ Regra de firewall permitindo paid_clients (já tem)');
-    console.log('   2. ✅ Regra de NAT masquerade (verificar acima)');
-    console.log('   3. ✅ Rota padrão configurada (verificar acima)');
-    console.log('   4. ✅ Interface WAN ativa (verificar acima)');
+    console.log('Se o cliente não consegue acessar:');
+    console.log('   1. Verifique se há rota padrão configurada');
+    console.log('   2. Verifique se o NAT masquerade está na interface correta');
+    console.log('   3. Teste ping do cliente para 8.8.8.8');
+    console.log('   4. Verifique logs do firewall: /log print where topics~firewall');
     console.log('');
 
   } catch (error) {
