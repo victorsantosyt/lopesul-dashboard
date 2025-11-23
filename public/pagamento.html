@@ -256,10 +256,24 @@
           if (verificarData.temAcesso) {
             console.log('[Portal] ✅ Cliente já tem acesso!', verificarData);
             
-            // Mostrar mensagem e redirecionar
+            // Verificar se há parâmetro ?novo=true na URL (permite fazer novo pagamento mesmo tendo acesso)
+            const urlParams = new URLSearchParams(window.location.search);
+            const forcarNovo = urlParams.get('novo') === 'true';
+            
+            // Se o cliente está na página de escolha (não em checkout), não redirecionar automaticamente
+            // Permite que ele escolha fazer um novo pagamento
             const viewEscolha = document.getElementById('view-escolha');
             const viewCheckout = document.getElementById('view-checkout');
+            const estaNaEscolha = viewEscolha && viewEscolha.style.display !== 'none';
             
+            if (forcarNovo || estaNaEscolha) {
+              console.log('[Portal] Cliente tem acesso mas está na página de escolha ou forçou novo pagamento. Não redirecionando.');
+              verificandoAcesso = false;
+              return false; // Permite fazer novo pagamento
+            }
+            
+            // Só redirecionar se estiver em checkout ou se não estiver na página de escolha
+            // Mostrar mensagem e redirecionar
             if (viewEscolha) viewEscolha.style.display = 'none';
             if (viewCheckout) viewCheckout.style.display = 'none';
             
@@ -490,13 +504,8 @@
         localStorage.removeItem('pedidoCode');
         console.log('[Portal] PedidoCode antigo removido ao iniciar novo checkout');
         
-        // Verificar acesso ANTES de iniciar checkout (para clientes com acesso liberado manualmente)
-        const temAcesso = await verificarAcessoExistente();
-        if (temAcesso) {
-          console.log('[Portal] Cliente já tem acesso, cancelando checkout');
-          return; // A função verificarAcessoExistente já redireciona
-        }
-        
+        // NÃO verificar acesso ao iniciar checkout - permite fazer novo pagamento mesmo tendo acesso
+        // O cliente pode querer comprar mais tempo
         emCheckout = true; // Marcar que está em checkout para evitar verificações durante preenchimento
         elEscolha.style.display = 'none';
         elCheckout.style.display = 'block';
