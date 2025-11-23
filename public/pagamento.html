@@ -391,9 +391,12 @@
             const status = j?.status;
             if (status === 'pago' || j?.pago) {
               limparFluxo();
+              clearInterval(pollingHandle); // Parar polling para evitar loop
+              pollingHandle = null;
+              
               const s = document.getElementById('status');
               s.className = 'pill ok';
-              s.textContent = '✅ Pagamento confirmado! Acesso liberado.';
+              s.textContent = '✅ Pagamento confirmado! Aguardando liberação do acesso...';
               
               // Salvar código do pedido no cookie/localStorage para identificar cliente mesmo quando IP/MAC mudarem
               if (REF) {
@@ -404,14 +407,58 @@
                 console.log('[Portal] ✅ PedidoCode salvo para identificação futura:', REF);
               }
               
-              // Webhook já liberou o acesso, apenas redireciona
-              setTimeout(() => {
-                try {
-                  const fallback = 'http://clients3.google.com/generate_204';
-                  const candidate = linkOrig || fallback;
-                  window.location.href = candidate;
-                } catch { window.location.href = '/'; }
-              }, 1200);
+              // Aguardar um pouco para o webhook processar e liberar acesso
+              // Verificar acesso antes de redirecionar
+              let tentativas = 0;
+              const maxTentativas = 10; // 30 segundos (10 * 3s)
+              
+              const verificarEAguardar = async () => {
+                tentativas++;
+                console.log(`[Portal] Verificando acesso (tentativa ${tentativas}/${maxTentativas})...`);
+                
+                // Aguardar um pouco antes de verificar
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Verificar se o acesso foi liberado
+                const temAcesso = await verificarAcessoExistente();
+                
+                if (temAcesso) {
+                  console.log('[Portal] ✅ Acesso confirmado! Redirecionando...');
+                  s.textContent = '✅ Acesso liberado! Redirecionando...';
+                  
+                  setTimeout(() => {
+                    try {
+                      const fallback = 'http://clients3.google.com/generate_204';
+                      const candidate = linkOrig || fallback;
+                      window.location.href = candidate;
+                    } catch { 
+                      window.location.href = '/'; 
+                    }
+                  }, 1000);
+                } else if (tentativas < maxTentativas) {
+                  console.log(`[Portal] Acesso ainda não liberado, aguardando... (${tentativas}/${maxTentativas})`);
+                  s.textContent = `✅ Pagamento confirmado! Aguardando liberação... (${tentativas}/${maxTentativas})`;
+                  setTimeout(verificarEAguardar, 3000);
+                } else {
+                  console.error('[Portal] ⚠️ Acesso não foi liberado após várias tentativas');
+                  s.className = 'pill err';
+                  s.textContent = '⚠️ Pagamento confirmado, mas acesso ainda não liberado. Aguarde alguns segundos e recarregue a página.';
+                  
+                  // Tentar redirecionar mesmo assim após 5 segundos
+                  setTimeout(() => {
+                    try {
+                      const fallback = 'http://clients3.google.com/generate_204';
+                      const candidate = linkOrig || fallback;
+                      window.location.href = candidate;
+                    } catch { 
+                      window.location.href = '/'; 
+                    }
+                  }, 5000);
+                }
+              };
+              
+              // Iniciar verificação
+              verificarEAguardar();
             }
             if (status === 'expirado' || status === 'cancelado') {
               limparFluxo();
