@@ -41,6 +41,12 @@ const prisma = new PrismaClient({
 const RELAY_BASE = env.RELAY_URL || env.RELAY_BASE || 'http://localhost:4000';
 const RELAY_TOKEN = env.RELAY_TOKEN || '';
 
+function formatarData(data) {
+  if (!data) return 'N/A';
+  const d = new Date(data);
+  return d.toLocaleString('pt-BR');
+}
+
 async function execMikrotikCommand(host, user, pass, command) {
   try {
     if (!RELAY_TOKEN || RELAY_TOKEN.length < 10) {
@@ -94,8 +100,8 @@ async function main() {
     }
     console.log('');
 
-    // Buscar sessão ativa
-    const sessao = await prisma.sessaoAtiva.findFirst({
+    // Buscar sessão ativa (primeiro com MAC, depois só IP)
+    let sessao = await prisma.sessaoAtiva.findFirst({
       where: {
         ipCliente: IP,
         ...(MAC ? { macCliente: MAC } : {}),
@@ -116,10 +122,61 @@ async function main() {
           },
         },
       },
+      orderBy: { inicioEm: 'desc' },
     });
 
+    // Se não encontrou com MAC, buscar só por IP
     if (!sessao) {
-      console.log('❌ Nenhuma sessão ativa encontrada no banco para este IP/MAC');
+      sessao = await prisma.sessaoAtiva.findFirst({
+        where: {
+          ipCliente: IP,
+        },
+        include: {
+          roteador: {
+            select: {
+              nome: true,
+              ipLan: true,
+              usuario: true,
+            },
+          },
+          pedido: {
+            select: {
+              code: true,
+              status: true,
+              customerName: true,
+            },
+          },
+        },
+        orderBy: { inicioEm: 'desc' },
+      });
+    }
+
+    if (!sessao) {
+      console.log('❌ Nenhuma sessão encontrada no banco para este IP');
+      console.log('');
+      console.log('💡 Verificando se há pedidos pagos para este IP...');
+      
+      // Buscar pedidos pagos
+      const pedidos = await prisma.pedido.findMany({
+        where: {
+          ip: IP,
+          status: 'PAID',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
+      
+      if (pedidos.length > 0) {
+        console.log(`✅ ${pedidos.length} pedido(s) pago(s) encontrado(s) para este IP:`);
+        pedidos.forEach((p, idx) => {
+          console.log(`   ${idx + 1}. ${p.code} - ${p.customerName || 'N/A'} (${formatarData(p.createdAt)})`);
+        });
+        console.log('');
+        console.log('💡 Para liberar acesso, execute:');
+        console.log(`   ./liberar-cliente-cortesia.sh ${IP} ${MAC || 'MAC'} ${pedidos[0].code}`);
+      } else {
+        console.log('❌ Nenhum pedido pago encontrado para este IP');
+      }
       return;
     }
 
