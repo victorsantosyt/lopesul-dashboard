@@ -197,11 +197,13 @@
 
       // VERIFICAÇÃO CRÍTICA: Verificar se cliente já tem acesso (resolve problema de MAC aleatório)
       async function verificarAcessoExistente() {
-        // Não verificar se estiver em processo de checkout
-        if (emCheckout) {
-          console.log('[Portal] Em checkout, pulando verificação de acesso');
+        // Não verificar se estiver em processo de checkout ou já verificando
+        if (emCheckout || verificandoAcesso) {
+          console.log('[Portal] Em checkout ou já verificando, pulando verificação de acesso');
           return false;
         }
+        
+        verificandoAcesso = true;
         
         try {
           // Aguardar um pouco para garantir que IP foi detectado
@@ -294,19 +296,29 @@
           }
           
           console.log('[Portal] Cliente não tem acesso, mostrando página de pagamento');
+          verificandoAcesso = false;
           return false;
         } catch (error) {
           console.error('[Portal] Erro ao verificar acesso existente:', error);
           // Em caso de erro, continua mostrando a página de pagamento
+          verificandoAcesso = false;
           return false;
         }
       }
 
       // Flag para evitar verificação durante checkout
       let emCheckout = false;
+      let verificandoAcesso = false; // Flag para evitar múltiplas verificações simultâneas
       
-      // Verificar acesso ao carregar a página (apenas uma vez, se não estiver em checkout)
-      verificarAcessoExistente();
+      // Verificar acesso ao carregar a página (apenas uma vez, com delay para evitar loop)
+      setTimeout(() => {
+        if (!emCheckout && !verificandoAcesso) {
+          verificandoAcesso = true;
+          verificarAcessoExistente().finally(() => {
+            verificandoAcesso = false;
+          });
+        }
+      }, 1000); // Delay de 1 segundo para evitar loop
 
       let nomeCli = get("nome") || get("name") || "";
       let docCli  = get("doc")  || get("document") || "";
@@ -473,6 +485,11 @@
       }
 
       async function iniciarCheckout({ valor, descricao, minutos }) {
+        // Limpar pedidoCode antigo ao iniciar novo checkout (para evitar loop)
+        document.cookie = 'pedidoCode=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        localStorage.removeItem('pedidoCode');
+        console.log('[Portal] PedidoCode antigo removido ao iniciar novo checkout');
+        
         // Verificar acesso ANTES de iniciar checkout (para clientes com acesso liberado manualmente)
         const temAcesso = await verificarAcessoExistente();
         if (temAcesso) {
