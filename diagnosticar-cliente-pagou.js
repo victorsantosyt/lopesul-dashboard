@@ -184,7 +184,7 @@ async function main() {
 
       if (!charge) {
         problemas.push('❌ Nenhuma charge associada ao pedido');
-      } else if (charge.status !== 'paid') {
+      } else if (charge.status !== 'paid' && charge.status !== 'PAID') {
         problemas.push(`❌ Charge não está paga (status: ${charge.status})`);
       }
 
