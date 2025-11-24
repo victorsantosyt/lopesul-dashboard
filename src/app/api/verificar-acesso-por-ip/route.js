@@ -230,8 +230,9 @@ export async function GET(req) {
                 }
               }
               
-              // Calcular expiração (120 minutos padrão)
-              const minutos = 120;
+              // Calcular expiração baseado no plano do pedido
+              const { calcularMinutosPlano } = await import('@/lib/plan-duration');
+              const minutos = calcularMinutosPlano(pedidoPago.description || pedidoPago);
               const now = new Date();
               const expiraEm = new Date(now.getTime() + minutos * 60 * 1000);
               
