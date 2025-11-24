@@ -172,7 +172,7 @@ async function main() {
         console.log(`   MAC: ${lease['mac-address'] || 'N/A'}`);
         console.log(`   Status: ${lease.status || 'N/A'}`);
         console.log(`   Expires: ${lease['expires-after'] || 'N/A'}`);
-        console.log(`   Hostname: ${lease.host-name || 'N/A'}`);
+        console.log(`   Hostname: ${lease['host-name'] || lease.hostname || 'N/A'}`);
       } else {
         console.log('⚠️  DHCP lease não encontrado (pode ser estático ou expirado)');
       }
@@ -254,7 +254,8 @@ async function main() {
     const hotspotServers = await execMikrotikCommand(host, user, pass, '/ip/hotspot/print');
     if (hotspotServers.ok && Array.isArray(hotspotServers.data)) {
       hotspotServers.forEach((server, idx) => {
-        console.log(`📋 Servidor ${idx + 1}: ${server.name || 'N/A'}`);
+        const serverName = server.name || server['name'] || 'N/A';
+        console.log(`📋 Servidor ${idx + 1}: ${serverName}`);
         console.log(`   Interface: ${server['interface'] || 'N/A'}`);
         console.log(`   Idle Timeout: ${server['idle-timeout'] || 'N/A'}`);
         console.log(`   Keepalive Timeout: ${server['keepalive-timeout'] || 'N/A'}`);
