@@ -55,8 +55,11 @@ const ALLOWED_NEXT_PATHS = new Set([
   '/dashboard',
   '/operadores',
   '/configuracoes',
-  '/dispositivos',
   '/frotas',
+  '/roteadores',
+  '/pagamentos',
+  '/acessos',
+  '/relatorios',
 ]);
 
 function withStdHeaders(res) {
