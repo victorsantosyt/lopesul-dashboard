@@ -1,0 +1,10 @@
+#!/bin/bash
+echo "🔍 Verificando APIs do Dashboard..."
+echo ""
+echo "1. Testando /api/sessoes (Acessos):"
+curl -s "https://painel.lopesuldashboardwifi.com/api/sessoes?from=$(date -u +%Y-%m-%d)&to=$(date -u +%Y-%m-%d)" | jq 'length' 2>/dev/null || echo "Erro ao buscar sessões"
+echo ""
+echo "2. Testando /api/pagamentos (Pagamentos):"
+curl -s "https://painel.lopesuldashboardwifi.com/api/pagamentos?from=$(date -u +%Y-%m-%d)&to=$(date -u +%Y-%m-%d)" | jq '.itens | length' 2>/dev/null || echo "Erro ao buscar pagamentos"
+echo ""
+echo "✅ Verificação concluída"

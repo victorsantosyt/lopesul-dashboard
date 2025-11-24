@@ -33,7 +33,6 @@ const navLinks = [
   { href: '/relatorios',    label: 'Relatórios',    icon: BarChart2 },
   { href: '/acessos',       label: 'Acessos',       icon: Users },
   { href: '/frotas',        label: 'Frotas',        icon: Bus },
-  { href: '/dispositivos',  label: 'Dispositivos',  icon: Server },
   { href: '/roteadores', label: 'Roteadores', icon: Server },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
   { href: '/operadores',    label: 'Operadores',    icon: UserCog },

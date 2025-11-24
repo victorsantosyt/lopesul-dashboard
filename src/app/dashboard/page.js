@@ -63,6 +63,10 @@ export default function Dashboard() {
     mikrotik: null,
     rttMs: null,
     identity: null,
+    mikrotikNome: null,
+    mikrotikIp: null,
+    starlinkNome: null,
+    starlinkIp: null,
   });
 
   const mountedRef = useRef(false);
@@ -70,7 +74,7 @@ export default function Dashboard() {
   // ====== STATUS (Mikrotik/Starlink) ======
   async function carregarStatus(abortSignal) {
     try {
-      const r = await fetchJSON("/api/mikrotik/status", {
+      const r = await fetchJSON("/api/status-dispositivos", {
         timeoutMs: MTK_TIMEOUT,
         signal: abortSignal,
         cache: "no-store",
@@ -78,17 +82,37 @@ export default function Dashboard() {
 
       if (r?.ok && r?.data) {
         const j = r.data;
-        const mik = j.ok ? "online" : "offline";
-        const star = j.flags?.hasLink && j.flags?.pingSuccess ? "online" : "offline";
-        const rtt = j.flags?.rttMs ?? j.rttMs ?? null;
-        const ident = j.identity ?? j.routerId ?? null;
+        const mik = j.mikrotik?.online ? "online" : "offline";
+        const star = j.starlink?.online ? "online" : "offline";
+        const mikNome = j.mikrotik?.nome || j.mikrotik?.identity || null;
+        const starNome = j.starlink?.nome || null;
+        const mikIp = j.mikrotik?.ip || null;
+        const starIp = j.starlink?.ip || null;
 
-        setStatus({ mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
-        setCache("dash:status:v1", { mikrotik: mik, starlink: star, rttMs: rtt, identity: ident });
+        setStatus({ 
+          mikrotik: mik, 
+          starlink: star, 
+          rttMs: null, 
+          identity: mikNome,
+          mikrotikNome: mikNome,
+          mikrotikIp: mikIp,
+          starlinkNome: starNome,
+          starlinkIp: starIp,
+        });
+        setCache("dash:status:v1", { 
+          mikrotik: mik, 
+          starlink: star, 
+          rttMs: null, 
+          identity: mikNome,
+          mikrotikNome: mikNome,
+          mikrotikIp: mikIp,
+          starlinkNome: starNome,
+          starlinkIp: starIp,
+        });
         return;
       }
     } catch {
-      console.warn("Falha no /api/mikrotik/status, tentando fallback…");
+      console.warn("Falha no /api/status-dispositivos, tentando fallback…");
     }
 
     // fallback
@@ -98,13 +122,18 @@ export default function Dashboard() {
         signal: abortSignal,
         cache: "no-store",
       });
-      if (rDisp?.ok && Array.isArray(rDisp.data)) {
-        const anyMikro = rDisp.data.some((d) => d?.tipo === "mikrotik" && d.status === "online");
-        const anyStar = rDisp.data.some((d) => d?.tipo === "starlink" && d.status === "online");
+      if (rDisp?.ok && rDisp.data) {
+        const mk = rDisp.data.mikrotik;
+        const sl = rDisp.data.starlink;
         setStatus({
-          mikrotik: anyMikro ? "online" : "offline",
-          starlink: anyStar ? "online" : "offline",
+          mikrotik: mk?.online ? "online" : "offline",
+          starlink: sl?.online ? "online" : "offline",
           rttMs: null,
+          identity: mk?.lastHost || null,
+          mikrotikNome: mk?.lastHost || null,
+          mikrotikIp: mk?.lastHost || null,
+          starlinkNome: sl?.lastHost || null,
+          starlinkIp: sl?.lastHost || null,
         });
       }
     } catch {}
@@ -275,10 +304,17 @@ export default function Dashboard() {
                     status.starlink === "online" ? "bg-green-500" : "bg-gray-400"
                   }`}
                 />
-                <span className="text-gray-700 dark:text-gray-300">
-                  {status.starlink ?? "Aguardando…"}
-                  {status.rttMs != null && status.starlink === "online" ? ` • ${status.rttMs} ms` : ""}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {status.starlink ?? "Aguardando…"}
+                  </span>
+                  {status.starlinkNome && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {status.starlinkNome}
+                      {status.starlinkIp && status.starlinkIp !== status.starlinkNome ? ` (${status.starlinkIp})` : ""}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -290,10 +326,17 @@ export default function Dashboard() {
                     status.mikrotik === "online" ? "bg-green-500" : "bg-gray-400"
                   }`}
                 />
-                <span className="text-gray-700 dark:text-gray-300">
-                  {status.mikrotik ?? "Aguardando…"}
-                  {status.identity ? ` • ${status.identity}` : ""}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {status.mikrotik ?? "Aguardando…"}
+                  </span>
+                  {status.mikrotikNome && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {status.mikrotikNome}
+                      {status.mikrotikIp && status.mikrotikIp !== status.mikrotikNome ? ` (${status.mikrotikIp})` : ""}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -304,13 +347,18 @@ export default function Dashboard() {
                   <li className="text-gray-400 dark:text-gray-500">Carregando…</li>
                 ) : ultimos.length > 0 ? (
                   ultimos.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">{fmtData(p.criadoEm)}</span>
-                      <span className="font-medium text-gray-800 dark:text-gray-100">
-                        {p.descricao ?? p.plano ?? "Pagamento"}
-                      </span>
-                      <span className="font-semibold text-green-600 dark:text-green-400">
-                        {fmtBRL(p.valor)}
+                    <li key={p.id || p.code} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          {fmtData(p.data || p.criadoEm || p.createdAt)}
+                        </span>
+                        <span className="font-semibold text-green-600 dark:text-green-400">
+                          {fmtBRL(p.valor || (p.amount ? p.amount / 100 : 0))}
+                        </span>
+                      </div>
+                      <span className="font-medium text-gray-800 dark:text-gray-100 text-xs">
+                        {p.descricao ?? p.plano ?? p.description ?? "Pagamento"}
+                        {p.customerName ? ` • ${p.customerName}` : ""}
                       </span>
                     </li>
                   ))
