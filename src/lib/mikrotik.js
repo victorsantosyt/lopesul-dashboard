@@ -108,6 +108,7 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoI
   const sentences = [
     `/ip/firewall/address-list/add list=paid_clients address=${ip} comment="${finalComment}"`,
     `/ip/hotspot/ip-binding/add address=${ip} mac-address=${mac} server=hotspot1 type=bypassed comment="${finalComment}"`,
+    `/ip/hotspot/host/remove [find mac-address="${mac}"]`,
     `/ip/hotspot/active/remove [find address="${ip}" or mac-address="${mac}"]`,
     `/ip/firewall/connection/remove [find src-address~"${ip}" or dst-address~"${ip}"]`,
     // Nota: ip-binding com type=bypassed já libera o acesso
@@ -232,19 +233,25 @@ export async function liberarAcesso({ ip, mac, orderId, comment, router, pedidoI
         `comment="${finalComment}"`
     );
 
-    // 3) Derruba sessão antiga do hotspot
+    // 3) Remove host antigo do hotspot
+    cmds.push(
+      `/ip/hotspot/host/remove ` +
+        `[find mac-address="${mac}"]`
+    );
+
+    // 4) Derruba sessão antiga do hotspot
     cmds.push(
       `/ip/hotspot/active/remove ` +
         `[find address="${ip}" or mac-address="${mac}"]`
     );
 
-    // 4) Limpa conexões antigas do IP
+    // 5) Limpa conexões antigas do IP
     cmds.push(
       `/ip/firewall/connection/remove ` +
         `[find src-address~"${ip}" or dst-address~"${ip}"]`
     );
 
-    // 5) Nota: ip-binding com type=bypassed já libera o acesso
+    // 6) Nota: ip-binding com type=bypassed já libera o acesso
     // Cliente precisa fazer nova requisição HTTP para Mikrotik reconhecer o binding
 
     for (const cmd of cmds) {
