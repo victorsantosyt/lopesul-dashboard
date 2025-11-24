@@ -119,6 +119,15 @@
 
       <div class="pill warn" id="timer">⏰ Tempo livre: 2:00</div>
       <div class="pill info" id="status">🔄 Aguardando pagamento...</div>
+      
+      <!-- Aviso após pagamento confirmado -->
+      <div class="pill warn" id="aviso-conexao" style="display:none; margin-top:12px; text-align:left; padding:14px;">
+        <div style="font-weight:800; margin-bottom:6px; font-size:15px;">⚠️ ATENÇÃO USUÁRIO!</div>
+        <div style="font-size:13px; line-height:1.5;">
+          Se após o pagamento aparecer "Sem conexão", toque em <strong>"Usar mesmo assim"</strong> para ativar sua internet.<br>
+          <span style="color:#856404;">Obrigado! Boa navegação.</span>
+        </div>
+      </div>
 
       <span class="back" id="btn-voltar">← escolher outro plano</span>
     </div>
@@ -376,6 +385,11 @@
         document.getElementById('timer').textContent = '⏰ Tempo livre: 2:00';
         elCliErro.style.display = 'none';
         elCliErro.textContent = '';
+        // Ocultar aviso de conexão ao voltar
+        const avisoConexao = document.getElementById('aviso-conexao');
+        if (avisoConexao) {
+          avisoConexao.style.display = 'none';
+        }
       }
 
       function limparFluxo() {
@@ -423,6 +437,12 @@
               const s = document.getElementById('status');
               s.className = 'pill ok';
               s.textContent = '✅ Pagamento confirmado! Aguardando liberação do acesso...';
+              
+              // Mostrar aviso sobre "Sem conexão"
+              const avisoConexao = document.getElementById('aviso-conexao');
+              if (avisoConexao) {
+                avisoConexao.style.display = 'block';
+              }
               
               // Salvar código do pedido no cookie/localStorage para identificar cliente mesmo quando IP/MAC mudarem
               if (REF) {
@@ -731,6 +751,12 @@
             s.className = 'pill ok';
             s.textContent = '✅ Pagamento confirmado! Liberando acesso...';
             btn.textContent = '✅ Pago';
+            
+            // Mostrar aviso sobre "Sem conexão"
+            const avisoConexao = document.getElementById('aviso-conexao');
+            if (avisoConexao) {
+              avisoConexao.style.display = 'block';
+            }
             setTimeout(() => {
               try {
                 const fallback = 'http://clients3.google.com/generate_204';
