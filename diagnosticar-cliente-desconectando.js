@@ -252,8 +252,8 @@ async function main() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     const hotspotServers = await execMikrotikCommand(host, user, pass, '/ip/hotspot/print');
-    if (hotspotServers.ok && Array.isArray(hotspotServers.data)) {
-      hotspotServers.forEach((server, idx) => {
+    if (hotspotServers.ok && Array.isArray(hotspotServers.data) && hotspotServers.data.length > 0) {
+      hotspotServers.data.forEach((server, idx) => {
         const serverName = server.name || server['name'] || 'N/A';
         console.log(`📋 Servidor ${idx + 1}: ${serverName}`);
         console.log(`   Interface: ${server['interface'] || 'N/A'}`);
