@@ -171,9 +171,10 @@ export default function Dashboard() {
           setCache("dash:dashboard:v1", rDash.value.data);
         }
         if (rPays.status === "fulfilled" && rPays.value?.ok) {
-          const lista = Array.isArray(rPays.value.data)
-            ? rPays.value.data
-            : rPays.value.data?.items ?? [];
+          const data = rPays.value.data;
+          const lista = Array.isArray(data)
+            ? data
+            : data?.items ?? data?.itens ?? [];
           setUltimos(lista);
           setCache("dash:ultimos:v1", lista);
         }
