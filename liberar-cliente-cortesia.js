@@ -86,9 +86,11 @@ async function main() {
       }
     }
     
-    // Se não encontrou, tentar buscar pelo IP (subnet)
+    // Se não encontrou, tentar buscar pelo IP (subnet) ou listar todos os dispositivos
     if (!deviceIdFinal && IP) {
       const subnet = IP.substring(0, IP.lastIndexOf('.'));
+      console.log(`   🔍 Tentando encontrar dispositivo pela subnet ${subnet}...`);
+      
       const devices = await prisma.dispositivo.findMany({
         where: {
           OR: [
@@ -96,7 +98,7 @@ async function main() {
             { mikrotikHost: { startsWith: subnet } },
           ],
         },
-        select: { id: true, mikId: true, ip: true },
+        select: { id: true, mikId: true, ip: true, mikrotikHost: true },
       });
       
       if (devices.length === 1) {
@@ -114,6 +116,26 @@ async function main() {
           deviceIdFinal = devices[0].id;
           mikIdFinal = devices[0].mikId;
           console.log(`   ✅ Dispositivo escolhido (primeiro): ${deviceIdFinal} (${mikIdFinal})`);
+        }
+      } else {
+        // Se não encontrou pela subnet, listar todos os dispositivos disponíveis
+        console.log(`   ⚠️  Nenhum dispositivo encontrado pela subnet ${subnet}`);
+        console.log(`   🔍 Listando todos os dispositivos disponíveis...`);
+        
+        const todosDispositivos = await prisma.dispositivo.findMany({
+          select: { id: true, mikId: true, ip: true, mikrotikHost: true },
+          take: 10,
+        });
+        
+        if (todosDispositivos.length > 0) {
+          console.log(`   📋 ${todosDispositivos.length} dispositivo(s) encontrado(s):`);
+          todosDispositivos.forEach((d, idx) => {
+            console.log(`      ${idx + 1}. mikId: ${d.mikId || 'N/A'}, IP: ${d.ip || 'N/A'}, Host: ${d.mikrotikHost || 'N/A'}`);
+          });
+          console.log('');
+          console.log('   💡 Use um dos mikId acima no comando:');
+          console.log(`      node liberar-cliente-cortesia.js ${IP} ${MAC} 24h "" <mikId>`);
+          console.log('');
         }
       }
     }
