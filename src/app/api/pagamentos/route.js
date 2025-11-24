@@ -142,14 +142,41 @@ export async function GET(req) {
     // Mapear para o formato esperado pela página
     const itens = rows.map(p => {
       const c = p.charges?.[0] ?? null;
+      const sessao = p.SessaoAtiva?.[0];
+      const agora = new Date();
+      const sessaoExpirada = sessao ? sessao.expiraEm < agora : false;
+      const sessaoAtiva = sessao ? sessao.ativo && !sessaoExpirada : false;
       
       // Mapear status para formato esperado pela página
+      // IMPORTANTE: Se o pedido está PAID, sempre mostrar como "pago", mesmo que a sessão tenha expirado
+      // O status "expirado" só deve aparecer se o pedido em si está EXPIRED (não foi pago a tempo)
       let statusPt = 'pendente';
-      if (p.status === 'PAID' || p.status === 'pago') statusPt = 'pago';
-      else if (p.status === 'EXPIRED' || p.status === 'expirado') statusPt = 'expirado';
-      else if (p.status === 'PENDING' || p.status === 'pendente') statusPt = 'pendente';
-      else if (p.status === 'CANCELED' || p.status === 'cancelado') statusPt = 'cancelado';
-      else if (p.status === 'FAILED' || p.status === 'falhou') statusPt = 'falhou';
+      if (p.status === 'PAID' || p.status === 'pago') {
+        // Pedido pago: sempre mostrar como "pago", independente do status da sessão
+        statusPt = 'pago';
+      } else if (p.status === 'EXPIRED' || p.status === 'expirado') {
+        // Verificar se foi marcado incorretamente como EXPIRED
+        // Se tem sessão ativa OU foi criado recentemente (menos de 24h), pode ser erro
+        const horasDesdeCriacao = p.createdAt ? (agora - p.createdAt) / (1000 * 60 * 60) : 999;
+        const descricao = (p.description || '').toLowerCase();
+        const temTempoAcesso = descricao.includes('12h') || descricao.includes('24h') || descricao.includes('48h');
+        
+        if (sessaoAtiva || (temTempoAcesso && horasDesdeCriacao < 48)) {
+          // Pedido tem sessão ativa ou foi criado há pouco tempo com plano de acesso
+          // Provavelmente foi marcado incorretamente como EXPIRED
+          // Corrigir para PAID
+          statusPt = 'pago';
+          console.warn(`[pagamentos] Pedido ${p.code} marcado como EXPIRED mas tem sessão ativa ou foi criado recentemente. Corrigindo para pago.`);
+        } else {
+          statusPt = 'expirado';
+        }
+      } else if (p.status === 'PENDING' || p.status === 'pendente') {
+        statusPt = 'pendente';
+      } else if (p.status === 'CANCELED' || p.status === 'cancelado') {
+        statusPt = 'cancelado';
+      } else if (p.status === 'FAILED' || p.status === 'falhou') {
+        statusPt = 'falhou';
+      }
       
       // Mapear método de pagamento
       let forma = 'PIX';
