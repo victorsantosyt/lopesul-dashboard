@@ -55,7 +55,7 @@ async function main() {
           select: {
             id: true,
             mikId: true,
-            nome: true,
+            ip: true,
           },
         },
         SessaoAtiva: {
@@ -105,7 +105,7 @@ async function main() {
         console.log(`   📱 Dispositivo:`);
         console.log(`      ID: ${pedido.device.id}`);
         console.log(`      MikId: ${pedido.device.mikId || 'N/A'}`);
-        console.log(`      Nome: ${pedido.device.nome || 'N/A'}`);
+        console.log(`      IP: ${pedido.device.ip || 'N/A'}`);
         console.log('');
       }
       
